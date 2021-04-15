@@ -12,15 +12,25 @@ function interpolate_emiss(emiss_in) end
 
 const FILTER = Dict(
     # Skip multiple geometries for now by only taking meshes with 1 geometry (len == 1) that have gold as their id.
-    "material_geometry_mesh" => Dict("$size" => 1),
+    "material_geometry_mesh" => Dict(raw"$size" => 1),
     "material_geometry_mesh.material" => GOLD,
     # TODO make this work
     # "material_geometry_mesh_detailed.name": "spheroid",
     # XXX full spectra only (for now)
-    "results" => Dict("$size" => 150),
+    "results" => Dict(raw"$size" => 150),
     "surrounding_material" => VACUUM,
 )
 
+const PROJECTION = Dict(
+    "_id" => False,
+    "material_geometry_mesh" => True,
+    "results.wavelength_micron" => True,
+    "results.orientation_av_emissivity" => True,
+    "results.orientation_av_absorption_CrossSection_m2" => True,
+    "results.orientation_av_scattering_CrossSection_m2" => True,
+)
+
+const MIN_CLIP = 1e-19
 
 const MAX_SCATTER_CUTOFF = 1e-2
 const MIN_SCATTER_CUTOFF = 1e-14
@@ -124,11 +134,83 @@ function get_spheroid_data()
     db = client["propopt"]
     simulations = db["simulations"]
 
+    db.simulations.findone(simulations, FILTER, options = projection)
+    
+    filter = Mongoc.BSON(FILTER)
 
+    projection = Monogc.BSON(PROJECTION)
 
+    #=Figure out type assertion for these
+    
+    all_inputs: List[Input] = []
+    all_targets: List[Target] = []
+    all_geoms: List[ObjectId] = []=#
 
+    for i, sim in enumerate(Mongoc.find(simulations, filter=FILTER, options = projection))
+        material_handle = sim["material_geometry_mesh"][0] #Dict type?
+    
+        geometry = material_handle["geometry"]
+    
 
+        spheroid_filter = Dict(
+            "_id" => geometry,
+            "name" => "spheroid",
+            "dims.rx" => Dict(raw"$exists" => True),
+            "dims.rz" => (raw"$exists" => True),
+        )
+        spheroid_projection = Dict(
+            "_id" => False, 
+            "dims.rx" => True, 
+            "dims.rz"=> True
+        )
 
+        mongo_sph_filter = Mongoc.BSON(spheroid_filter)
+        
+        mongo_sph_proj = Mongoc.BSON(spheroid_projection)
+
+        # XXX only handle spherical geoms for now
+        # TODO convert old type assertion geom: Dict[str, Dict[str, float]]
+        geom = Mongoc.find_one(geometry,
+            spheroid_filter, options = mongo_sph_proj
+        )
+        # in case we didn't find a match
+
+        if geom is None
+            print("-" ^ 80)
+        end
+
+        results = sim["results"]
+    
+        wavelen = [r["wavelength_micron"] for r in results]
+        
+        absorption = [r["orientation_av_absorption_CrossSection_m2"] for r in results]
+
+        scatter = [r["orientation_av_scattering_CrossSection_m2"] for r in results]
+    
+        #= 
+        CONVERTED UP TO HERE
+        =#
+        
+        if any(np.isnan(arr).any() for arr in [wavelen, scatter, absorption]):
+            continue
+        end
+
+        if (absorption > MAX_ABSORPTION_CUTOFF).any() or (
+            scatter > MAX_SCATTER_CUTOFF
+        ).any()
+            continue
+        end
+        scatter = scatter.clip(min=MIN_CLIP)
+        absorption = absorption.clip(min=MIN_CLIP)
+    
+        input = np.stack([wavelen, scatter, absorption], axis=-1)
+        # hacky way to sort each data tuple by wavelen
+        input = input[input[:, 0].argsort()]
+    
+        all_inputs.append(input)
+        all_targets.append(Target(rx=geom["dims"]["rx"], rz=geom["dims"]["rz"]))
+        all_geoms.append(geometry)
+    end
 end
 
 
