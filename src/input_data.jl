@@ -133,21 +133,15 @@ function get_spheroid_data()
     client = Mongoc.Client("mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt")
     db = client["propopt"]
     simulations = db["simulations"]
-
-    db.simulations.findone(simulations, FILTER, options = projection)
     
     filter = Mongoc.BSON(FILTER)
 
     projection = Monogc.BSON(PROJECTION)
 
-    #=Figure out type assertion for these
-    
-    all_inputs: List[Input] = []
-    all_targets: List[Target] = []
-    all_geoms: List[ObjectId] = []=#
-
+    all_emisses = Dict()
+    all_rs = Spheroid[]
     for i, sim in enumerate(Mongoc.find(simulations, filter=FILTER, options = projection))
-        material_handle = sim["material_geometry_mesh"][0] #Dict type?
+        material_handle = sim["material_geometry_mesh"][1] #Dict type?
     
         geometry = material_handle["geometry"]
     
@@ -158,6 +152,7 @@ function get_spheroid_data()
             "dims.rx" => Dict(raw"$exists" => True),
             "dims.rz" => (raw"$exists" => True),
         )
+
         spheroid_projection = Dict(
             "_id" => False, 
             "dims.rx" => True, 
@@ -173,11 +168,6 @@ function get_spheroid_data()
         geom = Mongoc.find_one(geometry,
             spheroid_filter, options = mongo_sph_proj
         )
-        # in case we didn't find a match
-
-        if geom is None
-            print("-" ^ 80)
-        end
 
         results = sim["results"]
     
@@ -191,25 +181,21 @@ function get_spheroid_data()
         CONVERTED UP TO HERE
         =#
         
-        if any(np.isnan(arr).any() for arr in [wavelen, scatter, absorption]):
+        if any(any.(isnan.(arr)) for arr in [wavelen, scatter, absorption]) #dots may need shuffling?
             continue
         end
 
-        if (absorption > MAX_ABSORPTION_CUTOFF).any() or (
-            scatter > MAX_SCATTER_CUTOFF
-        ).any()
+        if any(absorption .> MAX_ABSORPTION_CUTOFF) || any(scatter .> MAX_SCATTER_CUTOFF)
             continue
         end
-        scatter = scatter.clip(min=MIN_CLIP)
-        absorption = absorption.clip(min=MIN_CLIP)
+
+        clamp!(scatter, MIN_CLIP, Inf)
+
+        clamp!(absorption, MIN_CLIP, Inf)
     
-        input = np.stack([wavelen, scatter, absorption], axis=-1)
-        # hacky way to sort each data tuple by wavelen
-        input = input[input[:, 0].argsort()]
-    
-        all_inputs.append(input)
-        all_targets.append(Target(rx=geom["dims"]["rx"], rz=geom["dims"]["rz"]))
-        all_geoms.append(geometry)
+        push!(all_rs, Spheroid(rx=geom["dims"]["rx"], rz=geom["dims"]["rz"]))
+
+        all_emisses[wavelen] = (scatter, absorption) #TODO sort by wavelen (use not a dict)
     end
 end
 
