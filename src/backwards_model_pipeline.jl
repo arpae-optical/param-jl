@@ -3,9 +3,15 @@ using FastAI.Datasets
 using FastAI: DLPipelines
 using Distributions
 using Statistics
+using MLDataPattern
 
 num_wavelens = 150
 NUM_SIMULATORS = size(simulators) #gonna have to import this somewhere, pl.LightningModule in the class arguments makes this a little opaque
+
+
+nobs(data) = len(data)
+
+getobs(data, idx) = (data.rx[idx], data.rz[idx], data.emiss[idx])
 
 struct ModelOutput
     geoms
@@ -29,15 +35,18 @@ struct EmissBackwards <: DLPipelines.LearningMethod{EmissBackwardsTask}
 end
 
 function DLPipelines.encodeinput(method::EmissBackwards, emiss_input)
-    
-    encoding(emiss_input)
-
+    #figure out what the input looks like, give out parameters (rx, rz)
+    return(emiss_input, rx, rz)
 end
 
 function DLPipelines.encodetarget(method::EmissBackwards, surface_target)
     #turn surface target into something: mesh?
+    if surface_target #is a spheroid, TODO figure out what marks that
+        #find rx, rz
+    end
     encoded_mesh = f^-1(surface_target)
-    return(encoded_mesh)
+    encoded_info = (surface_target, rx, rz)
+    return(encoded_info)
 end
 
 function DLPipelines.decodeŷ(method::EmissBackwards, ŷ)
@@ -52,7 +61,6 @@ function backwards_model(structured_emiss)
     h = structured_emiss.reshape(-1, 1, self.num_wavelens) #TODO make sure this works: this was a structured_emiss method
 
     encoder = Chain(
-            #TODO fix model syntax
             Conv((3,), 1 => 8, gelu),
             GELU(),
             # BatchNorm1d(8),
@@ -97,7 +105,7 @@ function backwards_model(structured_emiss)
                     # BatchNorm1d(32),
                     Dense(32, 2)
                 )
-                for _ 1:NUM_SIMULATORS
+                for _ in 1:NUM_SIMULATORS
             ]
         )
 
@@ -106,7 +114,7 @@ function backwards_model(structured_emiss)
 
     h = self.encoder(h)
     mean, log_var = self.mean_head(h), self.log_var_head(h)
-    std = e^(log_var / 2)
+    std = exp(log_var / 2)
 
     dist = Normal(
         μ=mean,
@@ -143,7 +151,7 @@ function _loss(self, batch, true_batch_idx::Int64, stage::String)
         args.kl_weight
         * (
                 -(
-                    1 + preds.log_variance - preds.mean^2 - e^preds.log_variance
+                    1 + preds.log_variance - preds.mean^2 - exp(preds.log_variance)
                 ) #TODO figure out .sum(dim=-1); what did it do?
                 / 2
             ))
@@ -155,6 +163,8 @@ function _loss(self, batch, true_batch_idx::Int64, stage::String)
         spheroids = preds.geoms[0]
         aspect_ratios = spheroids.max(1).values / spheroids.min(1).values #TODO figure out what the max method is doing
         aspect_ratio_loss = mean(aspect_ratios)
+
+        surface_area_loss =
     else
         aspect_ratio_loss = zeros(size(total_loss)) #TODO is this equivalent to torch.tensor(0)
     end
