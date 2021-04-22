@@ -27,7 +27,7 @@ function DLPipelines.encodetarget(method::EmissForward, emiss_target)
     return(emiss_target)
 end
 
-function DLPipelines.decodeŷ(method::MyImageClassification, ŷ)
+function DLPipelines.decodeŷ(method::EmissForward, ŷ)
     #"convert y hat" to predicted emissivity
     
     return(ŷ)
@@ -42,4 +42,12 @@ Dense(32, num_wavelens, sigmoid)) #same chain as others?
 
 opt = ADAM
 
-#TODO: Loss, training call
+#TODO: loss is based on mape and I don't know what that is, so figure that out, configure optimizers, train/validation/test
+
+function plotsample!(f, method::EmissForward, sample_mesh)
+    visualize(sample_mesh) #assumes sample_mesh is .obj; can use save_as_obj from MeshMaker.jl to make it happen
+end
+
+function plotxy!(f, method::EmissForward, (x,y))
+    #TODO figure out what this does
+end
