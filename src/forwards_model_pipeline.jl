@@ -44,7 +44,16 @@ Dense(32, num_wavelens, sigmoid)) #same chain as others?
 
 opt = ADAM
 
-#TODO: loss is based on mape and I don't know what that is, so figure that out, configure optimizers, train/validation/test
+function loss(self, batch)
+    geom, structured_emiss = batch
+    pred_emiss = self(geom)
+    if stage == "train" 
+        loss = self.train_metric(pred_emiss, structured_emiss)
+    else 
+        loss = self.val_metric(pred_emiss, structured_emiss)
+    end
+    return loss
+end
 
 function plotsample!(f, method::EmissForward, sample)
     #sample::((rx, rz), emiss)
