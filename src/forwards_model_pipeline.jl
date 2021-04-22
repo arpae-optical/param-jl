@@ -4,6 +4,8 @@ using FastAI: DLPipelines
 
 num_wavelens = 150
 
+mape(pred, true_value) = mean(abs(((pred - true_value)/true_value))) 
+
 abstract type EmissForwardTask <: DLPipelines.LearningTask end
 
 struct EmissForward <: DLPipelines.LearningMethod{EmissForwardTask}
@@ -44,10 +46,19 @@ opt = ADAM
 
 #TODO: loss is based on mape and I don't know what that is, so figure that out, configure optimizers, train/validation/test
 
-function plotsample!(f, method::EmissForward, sample_mesh)
-    visualize(sample_mesh) #assumes sample_mesh is .obj; can use save_as_obj from MeshMaker.jl to make it happen
-end
-
-function plotxy!(f, method::EmissForward, (x,y))
-    #TODO figure out what this does
+function plotsample!(f, method::EmissForward, sample)
+    #sample::((rx, rz), emiss)
+    #TODO make sure this actually works
+    wmesh = MeshMaker.mesh(sample[1][1], sample[1][2], 100)
+    open("data/mesh_$(mesh_index).obj", "w") do mesh_target
+        pts = [Tuple(p.coords) for p in wmesh.points]
+        edges = [Tuple(p.list) for p in wmesh.connec]
+        point_index = 0
+        for point in pts
+            write(mesh_target, "v $(point[1]) $(point[2]) $(point[3]) \n")
+        end
+        for edge in edges
+            write(mesh_target, "f $(edge[1]) $(edge[2]) $(edge[3]) \n")
+        end
+    visualize(sample) #assumes sample_mesh is .obj; can use save_as_obj from MeshMaker.jl to make it happen
 end
