@@ -4,15 +4,31 @@ using FastAI: DLPipelines
 using Distributions
 using Statistics
 using MLDataPattern
+include("forwards_model_pipeline.jl")
+include("input_data.jl")
+
+data = get_spheroid_data()
 
 num_wavelens = 150
+
 NUM_SIMULATORS = size(simulators) #gonna have to import this somewhere, pl.LightningModule in the class arguments makes this a little opaque
 
+mape(pred, true_value) = mean(abs(((pred - true_value)/true_value))) 
 
-nobs(data) = len(data)
+nobs(data) = length(data)
 
-getobs(data, idx) = (data.rx[idx], data.rz[idx], data.emiss[idx])
+getobs(data, idx) = (data[1], data[2])
 
+#TODO make this a core function (called "freeze!" probably)
+function Base.delete!(ps::Params)
+    for x in ps.params
+        delete!(ps.params, x)
+struct Simulators
+    spheroid::Function{Geometry => Emissivity} #TODO fix syntax if it's wrong
+    #TODO hexcavity, hexsphere
+end
+
+simulators = Simulators(Flux_model) #from forwards_model_pipeline
 struct ModelOutput
     geoms
     mean
@@ -36,29 +52,25 @@ end
 
 function DLPipelines.encodeinput(method::EmissBackwards, emiss_input)
     #figure out what the input looks like, give out parameters (rx, rz)
-    return(emiss_input, rx, rz)
+    (rx, rz), emiss_input
 end
 
 function DLPipelines.encodetarget(method::EmissBackwards, surface_target)
     #turn surface target into something: mesh?
-    if surface_target #is a spheroid, TODO figure out what marks that
-        #find rx, rz
-    end
-    encoded_mesh = f^-1(surface_target)
-    encoded_info = (surface_target, rx, rz)
-    return(encoded_info)
+    #find rx, rz
+    encoded_target = f^-1(surface_target) #see forwards model
+    encoded_info = ((rx, rz), encoded_target)
+
+    encoded_info
 end
 
 function DLPipelines.decodeŷ(method::EmissBackwards, ŷ)
     #TODO fix decoder syntax
-    
-
     decoder(ŷ)
 end
 
 function backwards_model(structured_emiss)
     #
-    h = structured_emiss.reshape(-1, 1, self.num_wavelens) #TODO make sure this works: this was a structured_emiss method
 
     encoder = Chain(
             Conv((3,), 1 => 8, gelu),
@@ -110,17 +122,16 @@ function backwards_model(structured_emiss)
         )
 
 
-    h = structured_emiss.reshape(-1, 1, self.num_wavelens) #TODO make work
+    h = reshape(structured_emiss, 1, self.num_wavelens)
 
     h = self.encoder(h)
     mean, log_var = self.mean_head(h), self.log_var_head(h)
     std = exp(log_var / 2)
 
-    dist = Normal(
+    zs = gradient(mean -> rand(Normal(
         μ=mean,
         σ=std
-    )
-    zs = gradient(mean -> rand(dist), 0) == (1,) #TODO make sure this works, see rsample https://github.com/FluxML/Flux.jl/issues/1431
+    )), 0) == (1,) 
 
     decoded = self.decoder(zs)
 
@@ -137,7 +148,7 @@ function _loss(self, batch, true_batch_idx::Int64, stage::String)
     preds = model(structured_emiss)
 
     if stage == "train"
-        self.simulators[true_batch_idx](preds.geoms[tre_batch_idx]) #use Symbol here
+        simulators[true_batch_idx](preds.geoms[tre_batch_idx])
         structured_emiss_mape_loss = args.structured_emiss_weight*mape(pred_emiss, structured_emiss)
     else:
         pred_emiss = [sim(g) for sim, g in zip(self.simulators, preds.geoms)]

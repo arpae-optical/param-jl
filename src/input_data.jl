@@ -39,6 +39,10 @@ const MAX_ABSORPTION_CUTOFF = 1e-11
 const GOLD = BSONObjectId("5f5a83183c9d9fd8800ce8a3")
 const VACUUM = BSONObjectId("5f5a831c3c9d9fd8800ce92c")
 
+struct SpheroidData
+    rs::#Array(Tuple{Float64, Float64}) ?
+    emiss::#Array(Float64)  ?
+end
 
 abstract type Input end
 
@@ -177,10 +181,6 @@ function get_spheroid_data()
 
         scatter = [r["orientation_av_scattering_CrossSection_m2"] for r in results]
     
-        #= 
-        CONVERTED UP TO HERE
-        =#
-        
         if any(any.(isnan.(arr)) for arr in [wavelen, scatter, absorption]) #dots may need shuffling?
             continue
         end
@@ -197,6 +197,7 @@ function get_spheroid_data()
 
         all_emisses[wavelen] = (scatter, absorption) #TODO sort by wavelen (use not a dict)
     end
+    SpheroidData(all_rs, all_emisses)
 end
 
 
