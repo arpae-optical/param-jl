@@ -35,7 +35,7 @@ function DLPipelines.decodeŷ(method::EmissForward, ŷ)
     return(ŷ)
 end
 
-model = Chain(Dense(x, 32, gelu), #sizeof input data
+model = Chain(Dense(2, 32, gelu), #sizeof input data
 Dense(32, 64, gelu),
 Dense(64, 128, gelu),
 Dense(128, 64, gelu),
@@ -69,5 +69,6 @@ function plotsample!(f, method::EmissForward, sample)
         for edge in edges
             write(mesh_target, "f $(edge[1]) $(edge[2]) $(edge[3]) \n")
         end
+    end
     visualize(sample) #assumes sample_mesh is .obj; can use save_as_obj from MeshMaker.jl to make it happen
 end

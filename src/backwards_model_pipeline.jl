@@ -69,7 +69,7 @@ function DLPipelines.decodeŷ(method::EmissBackwards, ŷ)
     decoder(ŷ)
 end
 
-function backwards_model(structured_emiss)
+function DLPipelines.methodmodel(method::EmissBackwards, structured_emiss)
     #
 
     encoder = Chain(
@@ -96,17 +96,15 @@ function backwards_model(structured_emiss)
         Dense(71 * 512, Z),
     )
 
-    decoder = Sequential(
-            Linear(Z, 512),
-            GELU(),
+    decoder = Chain(
+            Dense(Z, 512, gelu)
             # BatchNorm1d(512),
-            Linear(512, 256),
-            GELU(),
+            Dense(512, 256, gelu)
             # BatchNorm1d(256),
-            Linear(256, 128),
+            Dense(512, 256)
         )
 
-    geom_heads = ( #TODO make sure modulelist wasn't doing anything important
+    geom_heads = ( 
             [
                 Chain(
                     Dense(128, 96, gelu),
@@ -141,17 +139,18 @@ function backwards_model(structured_emiss)
     ModelOutput(geoms, mean, log_var, class_logits)
 end
 
-function _loss(self, batch, true_batch_idx::Int64, stage::String)
 
-    structured_emiss, *_ = batch #TODO does this work
+function DLPipelines.methodlossfn(::ImageClassification)(self, batch, true_batch_idx::Int64, stage::String)
+
+    structured_emiss, _ = batch #TODO does this work
 
     preds = model(structured_emiss)
 
     if stage == "train"
         simulators[true_batch_idx](preds.geoms[tre_batch_idx])
         structured_emiss_mape_loss = args.structured_emiss_weight*mape(pred_emiss, structured_emiss)
-    else:
-        pred_emiss = [sim(g) for sim, g in zip(self.simulators, preds.geoms)]
+    else
+        pred_emiss = [sim(g) for (sim, g) in zip(self.simulators, preds.geoms)]
         structured_emiss_mape_loss = min(
             mape(p, structured_emiss) for p in pred_emiss
         )
@@ -175,12 +174,13 @@ function _loss(self, batch, true_batch_idx::Int64, stage::String)
         aspect_ratios = spheroids.max(1).values / spheroids.min(1).values #TODO figure out what the max method is doing
         aspect_ratio_loss = mean(aspect_ratios)
 
-        surface_area_loss =
+        surface_area_loss = None #TODO copy paste with rx/rz
     else
         aspect_ratio_loss = zeros(size(total_loss)) #TODO is this equivalent to torch.tensor(0)
     end
 
     return(Loss(aspect_ratio_loss, structured_emiss_mape_loss, kl_loss, total_loss))
+
 
 function _log
     #No idea how to do this
@@ -192,4 +192,6 @@ end
 
 opt = ADAM #scheduler, monitor?
 
-#TODO training step, validation step, test step
+method = EmissBackwards()#parameters
+learner = methodlearner(method, data,  DLPipelines.methodmodel, ToGPU(), Metrics(accuracy))
+fitonecycle!(learner, 5)

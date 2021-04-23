@@ -1,7 +1,5 @@
 """Interpolates emiss curve to 150"""
-using BSON
-import Mongoc
-import Mongoc: BSONObjectId
+using Mongoc
 function interpolate_emiss(emiss_in) end
 
 """
