@@ -1,5 +1,6 @@
-"""Interpolates emiss curve to 150"""
+
 using Mongoc
+using Mongoc: BSONObjectId
 function interpolate_emiss(emiss_in) end
 
 """
@@ -8,7 +9,10 @@ function interpolate_emiss(emiss_in) end
 - absorp     3.257729e-11
 """
 
-const FILTER = Dict(
+const GOLD = BSONObjectId("5f5a83183c9d9fd8800ce8a3")
+const VACUUM = BSONObjectId("5f5a831c3c9d9fd8800ce92c")
+
+const FILTERING = Dict(
     # Skip multiple geometries for now by only taking meshes with 1 geometry (len == 1) that have gold as their id.
     "material_geometry_mesh" => Dict(raw"$size" => 1),
     "material_geometry_mesh.material" => GOLD,
@@ -19,13 +23,13 @@ const FILTER = Dict(
     "surrounding_material" => VACUUM,
 )
 
-const PROJECTION = Dict(
-    "_id" => False,
-    "material_geometry_mesh" => True,
-    "results.wavelength_micron" => True,
-    "results.orientation_av_emissivity" => True,
-    "results.orientation_av_absorption_CrossSection_m2" => True,
-    "results.orientation_av_scattering_CrossSection_m2" => True,
+const PROJECTING = Dict(
+    "_id" => false,
+    "material_geometry_mesh" => true,
+    "results.wavelength_micron" => true,
+    "results.orientation_av_emissivity" => true,
+    "results.orientation_av_absorption_CrossSection_m2" => true,
+    "results.orientation_av_scattering_CrossSection_m2" => true,
 )
 
 const MIN_CLIP = 1e-19
@@ -34,8 +38,6 @@ const MAX_SCATTER_CUTOFF = 1e-2
 const MIN_SCATTER_CUTOFF = 1e-14
 const MAX_ABSORPTION_CUTOFF = 1e-11
 
-const GOLD = BSONObjectId("5f5a83183c9d9fd8800ce8a3")
-const VACUUM = BSONObjectId("5f5a831c3c9d9fd8800ce92c")
 
 struct SpheroidData
     rs::#Array(Tuple{Float64, Float64}) ?
@@ -138,7 +140,7 @@ function get_spheroid_data()
     
     filter = Mongoc.BSON(FILTER)
 
-    projection = Monogc.BSON(PROJECTION)
+    projection = Monogc.BSON(PROJECTING)
 
     all_emisses = Dict()
     all_rs = Spheroid[]
