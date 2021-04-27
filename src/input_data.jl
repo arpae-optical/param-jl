@@ -2,12 +2,8 @@ using FastAI
 using Flux
 using StaticArrays
 using LearnBase
-
-"""# Data"""
-
 using Mongoc
 using Mongoc: BSONObjectId, BSON
-function interpolate_emiss(emiss_in) end
 
 """
 # 99.999 percentile
@@ -21,27 +17,6 @@ const BATCH_SIZE = 32
 const NUM_WAVELENS = 150
 const NUM_SIMULATORS = 1
 
-
-const FILTER = Dict(
-    # Skip multiple geometries for now by only taking meshes with 1 geometry (len == 1) that have gold as their id.
-    "material_geometry_mesh" => Dict(raw"$size" => 1),
-    "material_geometry_mesh.material" => GOLD,
-    # TODO make this work
-    # "material_geometry_mesh_detailed.name": "spheroid",
-    # XXX full spectra only (for now). This is why we can directly construct an InterpolatedEmissPlot in `getobs_all`
-    "results" => Dict(raw"$size" => NUM_WAVELENS),
-    "surrounding_material" => VACUUM,
-)
-
-const PROJECTION = Dict(
-    "_id" => false,
-    "material_geometry_mesh" => true,
-    "results.wavelength_micron" => true,
-    "results.orientation_av_emissivity" => true,
-    "results.orientation_av_absorption_CrossSection_m2" => true,
-    "results.orientation_av_scattering_CrossSection_m2" => true,
-)
-
 const MIN_CLIP = 1e-19
 
 const MAX_SCATTER_CUTOFF = 1e-2
@@ -50,10 +25,29 @@ const MIN_SCATTER_CUTOFF = 1e-14
 const MAX_ABSORPTION_CUTOFF = 1e-11
 
 abstract type Input end
+abstract type GeometryClass <: Input end
+"Geometry types that have analytically solveable emissivity."
+abstract type ExactGeometry <: GeometryClass end
 abstract type Output end
+
+const Wavelen = Float64
+const Scatter = Float64
+const Absorption = Float64
+const Emiss = (Scatter, Absorption)
+"Interpolated is a separate data type for safety reasons."
+const InterpolatedEmissPlot <: Output = SVector{NUM_WAVELENS,Pair{Wavelen,Emiss}}
 
 const ForwardTask = LearningTask{Input,Output}
 const BackwardTask = LearningTask{Output,Input}
+
+struct ForwardMethod <: LearningMethod{ForwardTask} end
+struct BackwardMethod <: LearningMethod{BackwardTask}
+    simulators::SVector{NUM_SIMULATORS}
+end
+
+# TODO might want to take log(wavelen).
+# TODO: Find unit package; use microns
+mape = Metric((pred, target) => abs((pred - target) / target), device = Flux.gpu)
 
 # TRAINING
 #           encode            lossfn(model(X), Y)
@@ -62,27 +56,6 @@ const BackwardTask = LearningTask{Output,Input}
 # INFERENCE
 #     encode       model       decode
 #::I -------> ::X ------> ::Ŷ -------> ::T
-
-struct ForwardMethod <: LearningMethod{ForwardTask} end
-struct BackwardMethod <: LearningMethod{BackwardTask}
-    simulators::Any
-end
-
-abstract type GeometryClass <: Input end
-"Geometry types that have analytically solveable emissivity"
-abstract type ExactGeometry <: GeometryClass end
-
-mape(pred, target) = abs((pred - target) / target)
-Metric(mape, device = Flux.gpu)
-
-const Scatter = Float64
-const Absorption = Float64
-# TODO might want to take log(wavelen). TODO: Find unit package; use microns
-"""wavelen=>emiss"""
-const Wavelen = Float64
-const Emiss = (Scatter, Absorption)
-"Interpolated is a separate data type for safety reasons."
-const InterpolatedEmissPlot <: Output = SVector{NUM_WAVELENS,Pair{Wavelen,Emiss}}
 
 function Base.rand(::HexSphere)
     HexSphere(len = 10^rand(Uniform(0.0, 0.7)), diam = rand(Uniform(1.0, 10.0)))
@@ -109,30 +82,29 @@ struct Spheroid <: GeometryClass
 end
 
 struct HexCavity <: ExactGeometry
-    """height over diam (ratio)"""
-    height::Float64
-    """len over diam (ratio)"""
-    len::Float64
     diam::Float64
+    height::Float64
+    len::Float64
 end
 
 struct HexSphere <: ExactGeometry
-    """len over diam (ratio)"""
-    len::Float64
     diam::Float64
+    len::Float64
 end
 
 struct TriGroove <: ExactGeometry
-    """Height"""
+    depth::Float64
     height::Float64
-    "depth"
     len::Float64
-    diam::Float64
 end
 
-struct LaserParams <: Input end # TODO fill out
+struct LaserParams <: Input
+    freq::Float64 # Repetition rates (kHz)	100
+    wavelen::Float64 # TODO make into microns
+    amplitude::Float64
+end
 
-function (g::HexCavity)(emiss_in::InterpolatedEmissPlot)
+function emiss(g::HexCavity, emiss_in::InterpolatedEmissPlot)
     R = g.diam / 2
     A₂ = π * R^2
     A₁ = A₂ + 2π * R * g.height / g.diam
@@ -142,7 +114,7 @@ function (g::HexCavity)(emiss_in::InterpolatedEmissPlot)
     (A₁ / A₂₃) * (1 - F₁₁) / (1 / emiss_in - F₁₁ * (1 / emiss_in - 1)) + 1 / emiss_in * A₃ / A₂₃
 end
 
-function (g::HexSphere)(emiss_in::InterpolatedEmissPlot)
+function emiss(g::HexSphere, emiss_in::InterpolatedEmissPlot)
     R = g.diam / 2
     L = g.len
     s = √(L^2 / 3) #length of one side of hexagon |
@@ -155,15 +127,19 @@ function (g::HexSphere)(emiss_in::InterpolatedEmissPlot)
     1 / (1 + A₂ / A₁ * (1 / emiss_in - 1))
 end
 
-function (g::TriGroove)(emiss_in::InterpolatedEmissPlot)
+function emiss(g::TriGroove, emiss_in::InterpolatedEmissPlot)
     # hexagonal stack, cylindrical cavity
-    A₁ = √(4g.height^2 + g.diam^2)
-    A₂ = g.diam
+    A₁ = √(4g.height^2 + g.depth^2)
+    A₂ = g.depth
     A₂₃ = g.len
     A₃ = A₂₃ - A₂
     F₁₁ = 1 - A₂ / A₁
     (A₁ / A₂₃) * (1 - F₁₁) / (1 / emiss_in - F₁₁ * (1 / emiss_in - 1)) + emiss_in * A₃ / A₂₃
 end
+
+getobs_all(::Type{HexCavity}; num_obs::Integer = 10^4) = rand(HexCavity, num_obs)
+getobs_all(::Type{HexSphere}; num_obs::Integer = 10^4) = rand(HexSphere, num_obs)
+getobs_all(::Type{TriGroove}; num_obs::Integer = 10^4) = rand(TriGroove, num_obs)
 
 function getobs_all(::Type{Spheroid})
     client = Mongoc.Client("mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt")
@@ -172,9 +148,28 @@ function getobs_all(::Type{Spheroid})
 
 
     out = SpheroidData[]
-    for (i, sim) in enumerate(Mongoc.find(simulations, BSON(FILTER), options = BSON(PROJECTION)))
+    for (i, sim) in enumerate(Mongoc.find(
+        simulations,
+        BSON(Dict(
+            # Skip multiple geometries for now by only taking meshes with 1 geometry (len == 1) that have gold as their id.
+            "material_geometry_mesh" => Dict(raw"$size" => 1),
+            "material_geometry_mesh.material" => GOLD,
+            # TODO make this work
+            # "material_geometry_mesh_detailed.name": "spheroid",
+            # XXX full spectra only (for now). This is why we can directly construct an InterpolatedEmissPlot in `getobs_all`
+            "results" => Dict(raw"$size" => NUM_WAVELENS),
+            "surrounding_material" => VACUUM,
+        )),
+        options = BSON(Dict(
+            "_id" => false,
+            "material_geometry_mesh" => true,
+            "results.wavelength_micron" => true,
+            "results.orientation_av_emissivity" => true,
+            "results.orientation_av_absorption_CrossSection_m2" => true,
+            "results.orientation_av_scattering_CrossSection_m2" => true,
+        )),
+    ))
         geometry = sim["material_geometry_mesh"][1]["geometry"] #Dict type?
-
 
         spheroid_filter = Dict(
             "_id" => geometry,
@@ -184,7 +179,6 @@ function getobs_all(::Type{Spheroid})
         )
 
         spheroid_projection = Dict("_id" => false, "dims.rx" => true, "dims.rz" => true)
-
 
         # XXX only handle spherical geoms for now
         # TODO convert old type assertion geom: Dict[str, Dict[str, float]]
@@ -201,7 +195,6 @@ function getobs_all(::Type{Spheroid})
            any(scatter .> MAX_SCATTER_CUTOFF)
             continue
         end
-
 
         clamp!(scatter, MIN_CLIP, Inf)
         clamp!(absorption, MIN_CLIP, Inf)
@@ -220,19 +213,25 @@ function getobs_all(::Type{Spheroid})
 end
 
 DLPipelines.encodeinput(method::ForwardMethod, ctx, input::Spheroid) = (input.rx, input.rz)
+DLPipelines.encodeinput(method::ForwardMethod, ctx, input::HexCavity) =
+    (input.diam, input.height, input.len)
+DLPipelines.encodeinput(method::ForwardMethod, ctx, input::HexSphere) = (input.diam, input.len)
+DLPipelines.encodeinput(method::ForwardMethod, ctx, input::TriGroove) =
+    (input.depth, input.height, input.len)
 
 function DLPipelines.encodetarget(task::ForwardTask, target::InterpolatedEmissPlot)
     [t.second for t in target]
 end
-
 function DLPipelines.encodeinput(method::BackwardMethod, ctx, input::InterpolatedEmissPlot)
     [i.second for i in input]
 end
 
 DLPipelines.encodetarget(task::BackwardTask, target::Spheroid) = (target.rx, target.rz)
+DLPipelines.encodetarget(task::BackwardTask, target::HexCavity) = (target.rx, target.rz)
+DLPipelines.encodetarget(task::BackwardTask, target::HexSphere) = (target.rx, target.rz)
+DLPipelines.encodetarget(task::BackwardTask, target::TriGroove) = (target.rx, target.rz)
 
-DLPipelines.decodeŷ(method::ForwardMethod, ctx, pred) = pred
-
+DLPipelines.decodeŷ(method::BackwardMethod, ctx, pred) = pred
 
 function DLPipelines.methodmodel(method::ForwardMethod, backbone)
     Chain(
@@ -254,7 +253,6 @@ end
 DLPipelines.methodlossfn(method::ForwardMethod) = Flux.Losses.mse
 
 function DLPipelines.methodmodel(method::BackwardMethod, backbone)
-
     encoder = Chain(
         Conv((3,), 1 => 8, gelu),
         # BatchNorm1d(8),
@@ -291,7 +289,6 @@ function DLPipelines.methodmodel(method::BackwardMethod, backbone)
     ]
 
     classifier = Chain(
-        # TODO(cc) make 2*.. the sum of the outputs of geom heads
         Dense(150, 64, gelu),
         # BatchNorm1d(64),
         Dense(64, 32, gelu),
@@ -335,7 +332,7 @@ function DLPipelines.methodlossfn(method::BackwardMethod)
 
         var = std^2
 
-        kl_loss = mean(-sum((1 + log(var - mean^2 - std), -1) / 2))
+        kl_loss = mean(-sum((1 + log(var) - mean^2 - std), -1) / 2)
 
         aspect_ratio_loss = mean(max(g.rx, g.rz) / min(g.rz, g.rz) for g in geom)
         total_loss = mape_loss + kl_loss + aspect_ratio_loss
@@ -347,7 +344,7 @@ end
 
 dataset = getobs_all(Spheroid)
 
-fwd_learner = methodlearner(ForwardMethod(), dataset, nothing, ToGPU(), Metrics(accuracy))
+fwd_learner = methodlearner(ForwardMethod(), dataset, nothing, ToGPU(), Metrics(mape))
 
 fitonecycle!(fwd_learner, 5)
 
@@ -356,7 +353,7 @@ backward_learner = methodlearner(
     dataset,
     nothing,
     ToGPU(),
-    Metrics(accuracy),
+    Metrics(mape),
 )
 
 fitonecycle!(backward_learner, 5)
