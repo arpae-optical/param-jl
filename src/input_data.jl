@@ -1,15 +1,7 @@
 using FastAI
+using Flux
 using StaticArrays
 using LearnBase
-
-
-
-dataset = loadtaskdata(datasetpath("imagenette2-160"), ImageClassificationTask)
-method = ImageClassification(Datasets.getclassesclassification("imagenette2-160"), (160, 160))
-data_loaders = methoddataloaders(dataset, method, 16)
-model = methodmodel(method, Models.xresnet18())
-learner = Learner(model, data_loaders, ADAM(), methodlossfn(method), ToGPU(), Metrics(accuracy))
-fitonecycle!(learner, 5)
 
 """# Data"""
 
@@ -24,6 +16,11 @@ function interpolate_emiss(emiss_in) end
 """
 const GOLD = BSONObjectId("5f5a83183c9d9fd8800ce8a3")
 const VACUUM = BSONObjectId("5f5a831c3c9d9fd8800ce92c")
+const BATCH_SIZE = 32
+
+const NUM_WAVELENS = 150
+const NUM_SIMULATORS = 1
+
 
 const FILTER = Dict(
     # Skip multiple geometries for now by only taking meshes with 1 geometry (len == 1) that have gold as their id.
@@ -31,8 +28,8 @@ const FILTER = Dict(
     "material_geometry_mesh.material" => GOLD,
     # TODO make this work
     # "material_geometry_mesh_detailed.name": "spheroid",
-    # XXX full spectra only (for now)
-    "results" => Dict(raw"$size" => 150),
+    # XXX full spectra only (for now). This is why we can directly construct an InterpolatedEmissPlot in `getobs_all`
+    "results" => Dict(raw"$size" => NUM_WAVELENS),
     "surrounding_material" => VACUUM,
 )
 
@@ -57,111 +54,120 @@ abstract type Output end
 
 const ForwardTask = LearningTask{Input,Output}
 const BackwardTask = LearningTask{Output,Input}
+
 # TRAINING
 #           encode            lossfn(model(X), Y)
-# ::(I, 0) -------> ::(X, Y) --------------------> loss
+# ::(I, O) -------> ::(X, Y) --------------------> loss
+
 # INFERENCE
 #     encode       model       decode
 #::I -------> ::X ------> ::Ŷ -------> ::T
 
-struct DirectMethod <: LearningMethod{ForwardTask} end
-struct IndirectMethod <: LearningMethod{BackwardTask} end
+struct ForwardMethod <: LearningMethod{ForwardTask} end
+struct BackwardMethod <: LearningMethod{BackwardTask}
+    simulators::Any
+end
 
 abstract type GeometryClass <: Input end
-"""Geometry types that have analytically solveable emissivity"""
-abstract type ExactGeometry <: GeometryClass
+"Geometry types that have analytically solveable emissivity"
+abstract type ExactGeometry <: GeometryClass end
 
-end
+mape(pred, target) = abs((pred - target) / target)
+Metric(mape, device = Flux.gpu)
 
 const Scatter = Float64
 const Absorption = Float64
-
 # TODO might want to take log(wavelen). TODO: Find unit package; use microns
 """wavelen=>emiss"""
 const Wavelen = Float64
 const Emiss = (Scatter, Absorption)
-const EmissPlot = AbstractVector{Pair{Wavelen,Emiss}}
 "Interpolated is a separate data type for safety reasons."
-const InterpolatedEmissPlot = SVector{150,Pair{Wavelen,Emiss}}
+const InterpolatedEmissPlot <: Output = SVector{NUM_WAVELENS,Pair{Wavelen,Emiss}}
+
+function rand(::HexSphere)
+    HexSphere(len = 10^rand(Uniform(0, 0.7), N), diam = rand(Uniform(1, 10), N))
+end
+function rand(::HexCavity)
+    l_d = 10^Uniform(0.065, 0.4).sample((N,))
+    height = Uniform(0, 10).sample((N,))
+    simulator = hex_cavity_emiss_out
+end
+function rand(::TriGroove)
+    l_d = 10^Uniform(0, 0.4).sample((N,))
+    height = Uniform(0, 10).sample((N,))
+    simulator = tri_groove_emiss_out
+end
+
 struct Spheroid <: GeometryClass
     """ry := rz"""
     rx::Float64
     rz::Float64
 end
 
-struct SpheroidData
-    s::Spheroid
-    emiss::EmissPlot
+struct HexCavity <: ExactGeometry
+    """height over diam (ratio)"""
+    height::Float64
+    """len over diam (ratio)"""
+    len::Float64
+    diam::Float64
 end
 
 struct HexSphere <: ExactGeometry
     """len over diam (ratio)"""
-    l_d::Float64 #real number, length/diameter
+    len::Float64
+    diam::Float64
 end
 
 struct TriGroove <: ExactGeometry
     """Height"""
-    h::Float64
+    height::Float64
     "depth"
-    l::Float64
-end
-
-struct HexCavity <: ExactGeometry
-    """height over diam (ratio)"""
-    h_d::Float64
-    """len over diam (ratio)"""
-    l_d::Float64
+    len::Float64
+    diam::Float64
 end
 
 struct LaserParams <: Input end # TODO fill out
 
-function emissivity_of(emiss_in::EmissPlot, g::HexSphere)
+function (g::HexCavity)(emiss_in::InterpolatedEmissPlot)
+    D = g.diam
+    R = D / 2
+    A₂ = π * R^2
+    A₁ = A₂ + 2π * R * g.height / g.diam
+    F₁₁ = 1 - A₂ / A₁
+    A₂₃ = 3(g.len / D)^2 / (2 * √(3))
+    A₃ = A₂₃ - A₂
+    (A₁ / A₂₃) * (1 - F₁₁) / (1 / emiss_in - F₁₁ * (1 / emiss_in - 1)) + 1 / emiss_in * A₃ / A₂₃
+end
+
+function (g::HexSphere)(emiss_in::InterpolatedEmissPlot)
     """TODO make it pretty (pi, *, etc)"""
 
-    D = 1 #diameter of sphere
-    R = D / 2 #radius of sphere    /\
-    L = g.l_d * D #width of hexagon |  | distance between |  |
-    #                             \/
+    R = g.diam / 2
+    L = g.len
     s = sqrt(L^2 / 3) #length of one side of hexagon |
 
-    As = 4 * pi * R^2 #surface area of sphere
-    Ah = 3 / 2 * s * L #surface area of hexagon (side times base over two times six)
-    A1 = As + Ah #surface area of solid
+    Aₛ = 4π * R^2 #surface area of sphere
+    Aₕ = 3 / 2 * s * L #surface area of hexagon (side times base over two times six)
+    A₁ = Aₛ + Aₕ #surface area of solid
 
-    A_1 = A1 #emitting surface
-    A_2 = Ah #apparent area
-    # K=1-F11-A_2/A_1;
-    1 / (1 + A_2 / A_1 * (1 / emiss_in - 1))
+    A₁ = A₁ #emitting surface
+    A₂ = Aₕ #apparent area
+    # K=1-F₁₁-A₂/A₁;
+    1 / (1 + A₂ / A₁ * (1 / emiss_in - 1))
 end
 
-function emissivity_of(emiss_in::EmissPlot, g::TriGroove)
+function (g::TriGroove)(emiss_in::InterpolatedEmissPlot)
     # hexagonal stack, cylindrical cavity
-    D = 1
-    A_1 = sqrt(4 * g.H^2 + D^2)
-    A_2 = D
-    A23 = g.L
-    A_3 = A23 - A_2
-    F11 = 1 - A_2 / A_1
-    (A_1 / A23) * (1 - F11) / (1 / emiss_in - F11 * (1 / emiss_in - 1)) + emiss_in * A_3 / A23
+    D = g.diam
+    A₁ = sqrt(4 * g.height^2 + D^2)
+    A₂ = D
+    A₂₃ = g.len
+    A₃ = A₂₃ - A₂
+    F₁₁ = 1 - A₂ / A₁
+    (A₁ / A₂₃) * (1 - F₁₁) / (1 / emiss_in - F₁₁ * (1 / emiss_in - 1)) + emiss_in * A₃ / A₂₃
 end
 
-function emissivity_of(emiss_in::EmissPlot, g::HexCavity)
-    D = 1
-    R = D / 2
-    A_2 = pi * R^2
-    A_1 = A_2 + 2 * pi * R * g.h_d
-    F11 = 1 - A_2 / A_1
-    A23 = 3 * g.l_d^2 / 2 / sqrt(3)
-    A_3 = A23 - A_2
-    (A_1 / A23) * (1 - F11) / (1 / emiss_in - F11 * (1 / emiss_in - 1)) + epp * A_3 / A23
-end
-
-function emissivity_of(s::SpheroidData)
-    s.emiss
-end
-
-
-function getobs_all(::SpheroidData)::DataFrame{SpheroidData}
+function getobs_all(::Spheroid)
     client = Mongoc.Client("mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt")
     db = client["propopt"]
     simulations = db["simulations"]
@@ -202,14 +208,158 @@ function getobs_all(::SpheroidData)::DataFrame{SpheroidData}
         clamp!(scatter, MIN_CLIP, Inf)
         clamp!(absorption, MIN_CLIP, Inf)
 
-        pt = SpheroidData(
-            s = Spheroid(rx = geom["dims"]["rx"], rz = geom["dims"]["rz"]),
-            emiss = EmissPlot(wavelen => collect(zip(scatter, absorption))),
+        push!(
+            out,
+            (
+                Spheroid(rx = geom["dims"]["rx"], rz = geom["dims"]["rz"]),
+                InterpolatedEmissPlot(wavelen => collect(zip(scatter, absorption))),
+            ),
         )
-
-        push!(out, pt)
     end
 
     out
 
 end
+
+DLPipelines.encodeinput(method::ForwardMethod, ctx, input::Spheroid) = (input.rx, input.rz)
+
+function DLPipelines.encodetarget(task::ForwardTask, target::InterpolatedEmissPlot)
+    [t.second for t in target]
+end
+
+function DLPipelines.encodeinput(method::BackwardMethod, ctx, input::InterpolatedEmissPlot)
+    [i.second for i in input]
+end
+
+DLPipelines.encodetarget(task::BackwardTask, target::Spheroid) = (target.rx, target.rz)
+
+DLPipelines.decodeŷ(method::ForwardMethod, ctx, pred) = pred
+
+
+function DLPipelines.methodmodel(method::ForwardMethod, backbone)
+    Chain(
+        Dense(2, 32),
+        gelu,
+        Dense(32, 64),
+        gelu,
+        Dense(64, 128),
+        gelu,
+        Dense(128, 64),
+        gelu,
+        Dense(64, 32),
+        gelu,
+        Dense(32, NUM_WAVELENS),
+        sigmoid,
+    )
+end
+
+DLPipelines.methodlossfn(method::ForwardMethod) = Flux.Losses.mse
+
+function DLPipelines.methodmodel(method::BackwardMethod, backbone)
+
+    encoder = Chain(
+        Conv((3,), 1 => 8, gelu),
+        # BatchNorm1d(8),
+        Conv((3,), 8 => 16, gelu),
+        # BatchNorm1d(16),
+        Conv((3,), 16 => 64, gelu),
+        # BatchNorm1d(64),
+        Conv((3,), 64 => 256),
+        flatten,
+    )
+
+    Z = 1024
+    mean_head = Dense(71 * 512, Z)
+    std_head = Chain(Dense(71 * 512, Z),)
+
+    decoder = Chain(
+        Dense(Z, 512, gelu),
+        # BatchNorm1d(512),
+        Dense(512, 256, gelu),
+        # BatchNorm1d(256),
+        Dense(256, 128),
+    )
+
+    geom_heads = [
+        Chain(
+            Dense(128, 96, gelu),
+            # BatchNorm1d(96),
+            Dense(96, 64, gelu),
+            # BatchNorm1d(64),
+            Dense(64, 32, gelu),
+            # BatchNorm1d(32),
+            Dense(32, 2),
+        ) for _ in range(NUM_SIMULATORS)
+    ]
+
+    classifier = Chain(
+        # TODO(cc) make 2*.. the sum of the outputs of geom heads
+        Dense(150, 64, gelu),
+        # BatchNorm1d(64),
+        Dense(64, 32, gelu),
+        # BatchNorm1d(32),
+        Dense(32, NUM_SIMULATORS),
+    )
+
+    return (structured_emiss,) => begin
+        h = reshape(structured_emiss, :, 1, NUM_WAVELENS)
+
+        h = encoder(h)
+        mean, std = mean_head(h), std_head(h)
+        std = (log_var / 2).exp()
+
+        dist = Normal(mean, std)
+        zs = rand(dist)
+
+        decoded = decoder(zs)
+
+        geoms = [g(decoded) for g in geom_heads]
+
+        # TODO use typeddict instead
+        ModelOutput(geoms = geoms, mean = mean, std = std)
+    end
+
+end
+
+struct ForwardPred
+    geoms::Any
+    mean::Any
+    std::Any
+end
+
+function DLPipelines.methodlossfn(method::BackwardMethod)
+    (pred, target) -> begin
+        geom, mean, std = pred.geoms, pred.mean, pred.std
+
+        # TODO generalize to simulators
+        # TODO make simulators an enum
+        pred_emiss = method.simulators[1](geom[1])
+        mape_loss = mape(pred_emiss, target)
+
+        var = std^2
+
+        kl_loss = mean(-sum((1 + log(var - mean^2 - std), -1) / 2))
+
+        aspect_ratio_loss = mean(max(g.rx, g.rz) / min(g.rz, g.rz) for g in geom)
+        total_loss = mape_loss + kl_loss + aspect_ratio_loss
+
+        total_loss
+    end
+end
+
+
+dataset = getobs_all(Spheroid)
+
+fwd_learner = methodlearner(ForwardMethod(), dataset, nothing, ToGPU(), Metrics(accuracy))
+
+fitonecycle!(fwd_learner, 5)
+
+backward_learner = methodlearner(
+    BackwardMethod(simulators = [fwd_learner.model]),
+    dataset,
+    nothing,
+    ToGPU(),
+    Metrics(accuracy),
+)
+
+fitonecycle!(backward_learner, 5)
