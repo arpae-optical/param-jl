@@ -84,18 +84,22 @@ const Emiss = (Scatter, Absorption)
 "Interpolated is a separate data type for safety reasons."
 const InterpolatedEmissPlot <: Output = SVector{NUM_WAVELENS,Pair{Wavelen,Emiss}}
 
-function rand(::HexSphere)
-    HexSphere(len = 10^rand(Uniform(0, 0.7), N), diam = rand(Uniform(1, 10), N))
+function Base.rand(::HexSphere)
+    HexSphere(len = 10^rand(Uniform(0.0, 0.7)), diam = rand(Uniform(1.0, 10.0)))
 end
-function rand(::HexCavity)
-    l_d = 10^Uniform(0.065, 0.4).sample((N,))
-    height = Uniform(0, 10).sample((N,))
-    simulator = hex_cavity_emiss_out
+function Base.rand(::HexCavity)
+    HexCavity(
+        len = 10^rand(Uniform(0.065, 0.4)),
+        height = rand(Uniform(0.0, 10.0)),
+        diam = rand(Uniform(0.0, 10.0)),
+    )
 end
-function rand(::TriGroove)
-    l_d = 10^Uniform(0, 0.4).sample((N,))
-    height = Uniform(0, 10).sample((N,))
-    simulator = tri_groove_emiss_out
+function Base.rand(::TriGroove)
+    TriGroove(
+        len = 10^rand(Uniform(0.0, 0.4)),
+        height = rand(Uniform(0.0, 10.0)),
+        diam = 10^rand(Uniform(0.0, 0.4)),
+    )
 end
 
 struct Spheroid <: GeometryClass
@@ -129,28 +133,23 @@ end
 struct LaserParams <: Input end # TODO fill out
 
 function (g::HexCavity)(emiss_in::InterpolatedEmissPlot)
-    D = g.diam
-    R = D / 2
+    R = g.diam / 2
     A₂ = π * R^2
     A₁ = A₂ + 2π * R * g.height / g.diam
     F₁₁ = 1 - A₂ / A₁
-    A₂₃ = 3(g.len / D)^2 / (2 * √(3))
+    A₂₃ = 3(g.len / g.diam)^2 / (2 * √(3))
     A₃ = A₂₃ - A₂
     (A₁ / A₂₃) * (1 - F₁₁) / (1 / emiss_in - F₁₁ * (1 / emiss_in - 1)) + 1 / emiss_in * A₃ / A₂₃
 end
 
 function (g::HexSphere)(emiss_in::InterpolatedEmissPlot)
-    """TODO make it pretty (pi, *, etc)"""
-
     R = g.diam / 2
     L = g.len
-    s = sqrt(L^2 / 3) #length of one side of hexagon |
+    s = √(L^2 / 3) #length of one side of hexagon |
 
     Aₛ = 4π * R^2 #surface area of sphere
     Aₕ = 3 / 2 * s * L #surface area of hexagon (side times base over two times six)
     A₁ = Aₛ + Aₕ #surface area of solid
-
-    A₁ = A₁ #emitting surface
     A₂ = Aₕ #apparent area
     # K=1-F₁₁-A₂/A₁;
     1 / (1 + A₂ / A₁ * (1 / emiss_in - 1))
@@ -158,16 +157,15 @@ end
 
 function (g::TriGroove)(emiss_in::InterpolatedEmissPlot)
     # hexagonal stack, cylindrical cavity
-    D = g.diam
-    A₁ = sqrt(4 * g.height^2 + D^2)
-    A₂ = D
+    A₁ = √(4g.height^2 + g.diam^2)
+    A₂ = g.diam
     A₂₃ = g.len
     A₃ = A₂₃ - A₂
     F₁₁ = 1 - A₂ / A₁
     (A₁ / A₂₃) * (1 - F₁₁) / (1 / emiss_in - F₁₁ * (1 / emiss_in - 1)) + emiss_in * A₃ / A₂₃
 end
 
-function getobs_all(::Spheroid)
+function getobs_all(::Type{Spheroid})
     client = Mongoc.Client("mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt")
     db = client["propopt"]
     simulations = db["simulations"]
@@ -306,7 +304,6 @@ function DLPipelines.methodmodel(method::BackwardMethod, backbone)
 
         h = encoder(h)
         mean, std = mean_head(h), std_head(h)
-        std = (log_var / 2).exp()
 
         dist = Normal(mean, std)
         zs = rand(dist)
@@ -316,7 +313,7 @@ function DLPipelines.methodmodel(method::BackwardMethod, backbone)
         geoms = [g(decoded) for g in geom_heads]
 
         # TODO use typeddict instead
-        ModelOutput(geoms = geoms, mean = mean, std = std)
+        ForwardPred(geoms, mean, std)
     end
 
 end
