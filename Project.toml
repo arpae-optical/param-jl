@@ -6,6 +6,7 @@ version = "0.1.0"
 [deps]
 BSON = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
 FastAI = "5d0beca9-ade8-49ae-ad0b-a3cf890e669f"
+LearnBase = "7f8f8fb0-2700-5f03-b4bd-41f8cfc144b6"
 MLDataUtils = "cc2ba9b6-d476-5e6d-8eaf-a92d5412d41d"
 Mongoc = "4fe8b98c-fc19-5c23-8ec2-168ff83495f2"
 NiLang = "ab4ef3a6-0b42-11ea-31f6-e34652774712"

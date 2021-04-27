@@ -1,5 +1,6 @@
 using FastAI
 using StaticArrays
+using LearnBase
 
 
 
@@ -24,6 +25,16 @@ function interpolate_emiss(emiss_in) end
 const GOLD = BSONObjectId("5f5a83183c9d9fd8800ce8a3")
 const VACUUM = BSONObjectId("5f5a831c3c9d9fd8800ce92c")
 
+const FILTER = Dict(
+    # Skip multiple geometries for now by only taking meshes with 1 geometry (len == 1) that have gold as their id.
+    "material_geometry_mesh" => Dict(raw"$size" => 1),
+    "material_geometry_mesh.material" => GOLD,
+    # TODO make this work
+    # "material_geometry_mesh_detailed.name": "spheroid",
+    # XXX full spectra only (for now)
+    "results" => Dict(raw"$size" => 150),
+    "surrounding_material" => VACUUM,
+)
 
 const PROJECTION = Dict(
     "_id" => false,
@@ -62,9 +73,16 @@ abstract type ExactGeometry <: GeometryClass
 
 end
 
+const Scatter = Float64
+const Absorption = Float64
+
 # TODO might want to take log(wavelen). TODO: Find unit package; use microns
 """wavelen=>emiss"""
-const EmissivityCurve = SVector{150,Pair{Float64,Float64}}
+const Wavelen = Float64
+const Emiss = (Scatter, Absorption)
+const EmissPlot = AbstractVector{Pair{Wavelen,Emiss}}
+"Interpolated is a separate data type for safety reasons."
+const InterpolatedEmissPlot = SVector{150,Pair{Wavelen,Emiss}}
 struct Spheroid <: GeometryClass
     """ry := rz"""
     rx::Float64
@@ -73,19 +91,19 @@ end
 
 struct SpheroidData
     s::Spheroid
-    emiss::EmissivityCurve
+    emiss::EmissPlot
 end
 
 struct HexSphere <: ExactGeometry
     """len over diam (ratio)"""
-    l_d_ratio::Float64 #real number, length/diameter
+    l_d::Float64 #real number, length/diameter
 end
 
 struct TriGroove <: ExactGeometry
     """Height"""
-    H::Float64
+    h::Float64
     "depth"
-    L::Float64
+    l::Float64
 end
 
 struct HexCavity <: ExactGeometry
@@ -97,14 +115,12 @@ end
 
 struct LaserParams <: Input end # TODO fill out
 
-
-
-function emissivity_of(emiss_in::EmissivityCurve, g::HexSphere)
+function emissivity_of(emiss_in::EmissPlot, g::HexSphere)
     """TODO make it pretty (pi, *, etc)"""
 
     D = 1 #diameter of sphere
     R = D / 2 #radius of sphere    /\
-    L = g.l_d_ratio * D #width of hexagon |  | distance between |  |
+    L = g.l_d * D #width of hexagon |  | distance between |  |
     #                             \/
     s = sqrt(L^2 / 3) #length of one side of hexagon |
 
@@ -118,7 +134,7 @@ function emissivity_of(emiss_in::EmissivityCurve, g::HexSphere)
     1 / (1 + A_2 / A_1 * (1 / emiss_in - 1))
 end
 
-function emissivity_of(emiss_in::EmissivityCurve, g::TriGroove)
+function emissivity_of(emiss_in::EmissPlot, g::TriGroove)
     # hexagonal stack, cylindrical cavity
     D = 1
     A_1 = sqrt(4 * g.H^2 + D^2)
@@ -129,35 +145,31 @@ function emissivity_of(emiss_in::EmissivityCurve, g::TriGroove)
     (A_1 / A23) * (1 - F11) / (1 / emiss_in - F11 * (1 / emiss_in - 1)) + emiss_in * A_3 / A23
 end
 
-function emissivity_of(emiss_in::EmissivityCurve, g::HexCavity)
+function emissivity_of(emiss_in::EmissPlot, g::HexCavity)
     D = 1
     R = D / 2
     A_2 = pi * R^2
-    A_1 = A_2 + 2 * pi * R * g.h_d_ratio
+    A_1 = A_2 + 2 * pi * R * g.h_d
     F11 = 1 - A_2 / A_1
-    A23 = 3 * g.l_d_ratio^2 / 2 / sqrt(3)
+    A23 = 3 * g.l_d^2 / 2 / sqrt(3)
     A_3 = A23 - A_2
     (A_1 / A23) * (1 - F11) / (1 / emiss_in - F11 * (1 / emiss_in - 1)) + epp * A_3 / A23
 end
+
 function emissivity_of(s::SpheroidData)
     s.emiss
 end
 
-function get_spheroid_data()
+
+function getobs_all(::SpheroidData)::DataFrame{SpheroidData}
     client = Mongoc.Client("mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt")
     db = client["propopt"]
     simulations = db["simulations"]
 
-    filter = BSON(FILTER)
 
-    projection = BSON(PROJECTION)
-
-    all_emisses = Dict()
-    all_rs = Spheroid[]
-    for (i, sim) in enumerate(Mongoc.find(simulations, filter = FILTER, options = projection))
-        material_handle = sim["material_geometry_mesh"][1] #Dict type?
-
-        geometry = material_handle["geometry"]
+    out = SpheroidData[]
+    for (i, sim) in enumerate(Mongoc.find(simulations, BSON(FILTER), options = BSON(PROJECTION)))
+        geometry = sim["material_geometry_mesh"][1]["geometry"] #Dict type?
 
 
         spheroid_filter = Dict(
@@ -169,46 +181,35 @@ function get_spheroid_data()
 
         spheroid_projection = Dict("_id" => false, "dims.rx" => true, "dims.rz" => true)
 
-        mongo_sph_filter = BSON(spheroid_filter)
-
-        mongo_sph_proj = BSON(spheroid_projection)
 
         # XXX only handle spherical geoms for now
         # TODO convert old type assertion geom: Dict[str, Dict[str, float]]
-        geom = Mongoc.find_one(geometry, spheroid_filter, options = mongo_sph_proj)
+        geom = Mongoc.find_one(geometry, BSON(spheroid_filter), options = BSON(spheroid_projection))
 
         results = sim["results"]
 
         wavelen = [r["wavelength_micron"] for r in results]
-
         absorption = [r["orientation_av_absorption_CrossSection_m2"] for r in results]
-
         scatter = [r["orientation_av_scattering_CrossSection_m2"] for r in results]
 
-        if any(any.(isnan.(arr)) for arr in [wavelen, scatter, absorption]) #dots may need shuffling?
+        if any(isnan(x) for x in Iterators.flatten([wavelen, scatter, absorption])) ||
+           any(absorption .> MAX_ABSORPTION_CUTOFF) ||
+           any(scatter .> MAX_SCATTER_CUTOFF)
             continue
         end
 
-        if any(absorption .> MAX_ABSORPTION_CUTOFF) || any(scatter .> MAX_SCATTER_CUTOFF)
-            continue
-        end
 
         clamp!(scatter, MIN_CLIP, Inf)
-
         clamp!(absorption, MIN_CLIP, Inf)
 
-        push!(all_rs, Spheroid(rx = geom["dims"]["rx"], rz = geom["dims"]["rz"]))
+        pt = SpheroidData(
+            s = Spheroid(rx = geom["dims"]["rx"], rz = geom["dims"]["rz"]),
+            emiss = EmissPlot(wavelen => collect(zip(scatter, absorption))),
+        )
 
-        all_emisses[wavelen] = (scatter, absorption) #TODO sort by wavelen (use not a dict)
+        push!(out, pt)
     end
-    SpheroidData(all_rs, all_emisses)
-end
 
-
-function emissivity_of(emiss_in, g::Spheroid)
-
-end
-
-function emissivity_of(emiss_in, g::LaserParams)
+    out
 
 end
