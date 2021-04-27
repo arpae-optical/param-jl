@@ -1,4 +1,5 @@
 using FastAI
+using Plots
 using Flux
 using StaticArrays
 using LearnBase
@@ -42,7 +43,7 @@ const BackwardTask = LearningTask{Output,Input}
 
 struct ForwardMethod <: LearningMethod{ForwardTask} end
 struct BackwardMethod <: LearningMethod{BackwardTask}
-    simulators::SVector{NUM_SIMULATORS}
+    simulators::SVector{NUM_SIMULATORS,Function}
 end
 
 # TODO might want to take log(wavelen).
@@ -339,6 +340,21 @@ function DLPipelines.methodlossfn(method::BackwardMethod)
 
         total_loss
     end
+end
+
+function plotsample!(f, method::ForwardMethod, sample)
+    # TODO make work
+    g, emiss = sample
+    f[1, 1] = ax1 = imageaxis(f, title = g)
+    plotimage!(ax1, emiss)
+
+end
+function plotsample!(f, method::BackwardMethod, sample)
+    # TODO make work
+    emiss, g = sample
+    f[1, 1] = ax1 = imageaxis(f, title = g)
+    plot!(ax1, emiss)
+
 end
 
 
