@@ -12,10 +12,7 @@ using FastAI,
     FileIO,
     CUDA
 using Mongoc: BSONObjectId, BSON
-if CUDA.functional()
-    CUDA.allowscalar(false)
-end
-break_on(:error)
+CUDA.allowscalar(false)
 
 include("constants.jl")
 include("utils.jl")
@@ -27,6 +24,7 @@ include("plotting.jl")
 
 const SPHEROID_DATA_FILE = "data/spheroid_data.jld2"
 function run()
+
     dataset = try
         load(SPHEROID_DATA_FILE, "dataset")
     catch
@@ -44,7 +42,10 @@ function run()
         batchsize = BATCH_SIZE,
     )
 
-    # fitonecycle!(fwd_learner, 1)
+    fitonecycle!(fwd_learner, 1)
+
+    # freeze learner
+    fwd_learner.params = delete!(fwd_learner.params)
 
     backward_learner = methodlearner(
         BackwardMethod(Dict(Spheroid => fwd_learner.model)),
@@ -55,10 +56,6 @@ function run()
         batchsize = BATCH_SIZE,
     )
 
-    (x, y), _ = iterate(backward_learner.data.training)
-    ŷ = backward_learner.model(x)
-    loss = backward_learner.lossfn(ŷ, y)
-
-    fitonecycle!(backward_learner, 1)
+    FastAI.fit!(backward_learner, 2)
 
 end

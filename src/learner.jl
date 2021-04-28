@@ -1,3 +1,4 @@
+using Statistics
 function DLPipelines.encodeinput(method::ForwardMethod, ctx, input::Spheroid)
     x = [input.rx; input.rz]
 end
@@ -85,7 +86,7 @@ function DLPipelines.methodmodel(method::BackwardMethod, backbone)
             # BatchNorm1d(64),
             Dense(64, 32, gelu),
             # BatchNorm1d(32),
-            Dense(32, 2),
+            Dense(32, length(fieldnames(type))),
         ) for type in (Spheroid, HexCavity, HexSphere, TriGroove)
     )
 
@@ -100,6 +101,7 @@ function DLPipelines.methodmodel(method::BackwardMethod, backbone)
     return (structured_emiss,) -> begin
         h = encoder(reshape(structured_emiss, NUM_WAVELENS, 1, :))
         mean, std = mean_head(h), std_head(h)
+        # TODO get rid of scalar indexing here (zip, eachcol)
         samples =
             Flux.stack([rand(MvNormal(m, s)) for (m, s) in zip(eachcol(mean), eachcol(std))], 2)
         decoded = decoder(samples)
@@ -118,22 +120,20 @@ end
 function DLPipelines.methodlossfn(method::BackwardMethod)
     (pred, target) -> begin
         geom, mean, std, true_emiss = pred.geoms, pred.mean, pred.std, pred.true_emiss
+        true_emiss = gpu(true_emiss)
+        target = gpu(target)
+        gg = gpu(geom[Spheroid])
 
-        # TODO generalize to simulators
-        # TODO make simulators an enum
-        pred_emiss = method.simulators[Spheroid](geom[Spheroid])
-        println(size(geom[Spheroid]))
-        println(size(pred_emiss))
-        println(size(target))
-        println(size(true_emiss))
+        # TODO generalize to any simulators
+        pred_emiss = method.simulators[Spheroid](gg)
 
-        mape_loss = mape(pred_emiss, target)
+        mape_loss = mape(pred_emiss, true_emiss)
 
-        var = std^2
+        var = std .^ 2
+        kl_term = -sum(1 .+ log.(var) .- mean .^ 2 .- std; dims = 1) ./ 2
+        kl_loss = Statistics.mean(dropdims(kl_term; dims = 1))
 
-        kl_loss = mean(-sum((1 + log(var) - mean^2 - std), -1) / 2)
-
-        aspect_ratio_loss = mean(max(g.rx, g.rz) / min(g.rz, g.rz) for g in geom)
+        aspect_ratio_loss = Statistics.mean(maximum(g) / minimum(g) for g in eachcol(gg))
         total_loss = mape_loss + kl_loss + aspect_ratio_loss
 
         total_loss

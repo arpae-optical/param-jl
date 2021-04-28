@@ -5,7 +5,7 @@ using Mongoc: BSONObjectId, BSON
 
 const GOLD = BSONObjectId("5f5a83183c9d9fd8800ce8a3")
 const VACUUM = BSONObjectId("5f5a831c3c9d9fd8800ce92c")
-const BATCH_SIZE = 32
+const BATCH_SIZE = 1_024
 
 const NUM_WAVELENS = 150
 const NUM_SIMULATORS = 1

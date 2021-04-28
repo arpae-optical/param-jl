@@ -6,4 +6,6 @@ function Base.delete!(ps::Flux.Params)
     for x in ps.params
         delete!(ps.params, x)
     end
+    ps.params
 end
+
