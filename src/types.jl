@@ -35,8 +35,8 @@ struct BackwardMethod <: LearningMethod{BackwardTask}
     simulators::Dict{Type{<:GeometryClass},Any}
 end
 
-# TODO might want to take log(wavelen).
-# TODO: Find unit package; use microns
+# TODO Find unit package; use microns
+# TODO Might want to take log(wavelen).
 """Absolute percentage error"""
 function ape(pred::Number, target::Number)
     abs((pred - target) / target)
@@ -78,7 +78,13 @@ struct TriGroove <: ExactGeometry
     len::Float64
 end
 
+# TODO use units library
 struct LaserParams <: Input
+    power # Watts
+    polarization::Base.String
+    rep_rate:: # (khz)
+
+
     freq::Float64 # Repetition rates (kHz)	100
     wavelen::Float64 # TODO make into microns
     amplitude::Float64
