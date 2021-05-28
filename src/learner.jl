@@ -12,21 +12,9 @@ function DLPipelines.encodeinput(method::ForwardMethod, ctx, input::TriGroove)
     [input.depth; input.height; input.len]
 end
 
-function DLPipelines.encodeinput(method::ForwardMethod, ctx, input::LaserParams)
-    [input.freq;
-    input.wavelen;
-    input.laser_power_W;
-    input.laser_repetition_rate_kHz;
-    input.laser_scanning_line_spacing_x_dir_micron;
-    input.laser_scanning_line_spacing_y_dir_micron;
-    input.laser_scanning_speed_x_dir_mm_per_s;
-    input.laser_scanning_speed_y_dir_mm_per_s]
-end
-
 function DLPipelines.encodetarget(method::ForwardMethod, ctx, target::InterpolatedEmissPlot)
     t = [t.second[1] for t in target.emiss]
 end
-
 function DLPipelines.encodeinput(method::BackwardMethod, ctx, input::InterpolatedEmissPlot)
     [i.second[1] for i in input.emiss]
 end
@@ -58,10 +46,6 @@ end
 
 function DenseChain(dims...; activation::Function = gelu)
     t = Chain([Dense(i, o, activation) for (i, o) in zip(dims[1:(end - 1)], dims[2:end])]...)
-end
-
-function DLPipelines.methodmodel(method::ForwardMethod, backbone)
-    Chain(DenseChain(8, 32, 64, 128, 64, 32), Dense(32, NUM_WAVELENS, sigmoid))
 end
 
 function DLPipelines.methodmodel(method::ForwardMethod, backbone)
