@@ -30,7 +30,7 @@ input = [
     ] |> gpu
 #deconstruct data back into vector
 
-labels = [entry[2][2][2] for entry in data] |> gpu #each entry is SVector{NUM_WAVELENS,Pair{Wavelen,Emiss}}, so this should give just Emiss.
+labels = [entry[2][2][2] for entry in data] |> gpu #each entry[2] is SVector{NUM_WAVELENS,Pair{Wavelen,Emiss}}, so this should give just Emiss.
 
 model = Chain(DenseChain(9, 32, 64, 128, 64, 32), Dense(32, NUM_WAVELENS, sigmoid))
 
