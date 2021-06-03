@@ -15,15 +15,6 @@ include("data.jl")
 include("constants.jl")
 
 data = getobs_all(::Type{LaserParams}) 
-    freq::Float64 # Repetition rates (kHz)	100
-    wavelen::Float64 # TODO make into microns
-    amplitude::Float64
-    laser_power_W::Float64
-    laser_repetition_rate_kHz::Float64
-    laser_scan_spacing_x::Float64
-    laser_scan_spacing_y::Float64
-    laser_x_speed::Float64
-    laser_y_speed::Float64
 
 input = [
     [entry[1].freq, 
