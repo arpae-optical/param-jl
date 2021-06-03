@@ -40,4 +40,4 @@ params = Flux.params(model)
 
 optimizer = Descent(0.1)
 
-Flux.train!(loss, params, [(input,labels)], optimizer)
+Flux.train!(loss, params, zip(input, labels), optimizer)
