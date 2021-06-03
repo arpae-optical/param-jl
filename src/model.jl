@@ -19,7 +19,8 @@ data = getobs_all(::Type{LaserParams})
 input = [
     [entry[1].freq, 
     entry[1].wavelen, 
-    entry[1].laser_power_W, 
+    entry[1].amplitude,
+    entry[1].laser_power_W,
     entry[1].laser_repetition_rate_kHz, 
     entry[1].laser_scan_spacing_x, 
     entry[1].laser_scan_spacing_y, 
