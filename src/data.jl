@@ -1,11 +1,21 @@
-getobs_all(::Type{T}; num_obs::Integer = 10^4) where {T<:ExactGeometry} = rand(T, num_obs)
-using FastAI, Plots, Flux, StaticArrays, LearnBase, Mongoc, CSV, DataFrames, Distributions, Interpolations
+getobs_all(::Type{T}; num_obs::Integer = 10^4) where {T <: ExactGeometry} = rand(T, num_obs)
+using FastAI,
+    Plots,
+    Flux,
+    StaticArrays,
+    LearnBase,
+    Mongoc,
+    CSV,
+    DataFrames,
+    Distributions,
+    Interpolations
 
 include("constants.jl")
 include("types.jl")
 
 function getobs_laser()
-    client = Mongoc.Client("mongodb://propopt_ro:2vsz634dwrwwsq@mongodb07.nersc.gov/propopt")
+    client =
+        Mongoc.Client("mongodb://propopt_ro:2vsz634dwrwwsq@mongodb07.nersc.gov/propopt")
     db = client["propopt"]
     laser_samples = db["laser_samples"]
 
@@ -15,7 +25,7 @@ function getobs_laser()
     x_speed_list = []
     y_spacing_list = []
     frequency_list = []
-    
+
     for entry in laser_samples
         push!(wavelength_list, entry["laser_wavelength_nm"])
         push!(laser_power_W_list, entry["laser_power_W"])
@@ -27,66 +37,75 @@ function getobs_laser()
         for ex in emiss
             push!(EmissPlot, ex["normal_emissivity"])
         end
-        interpolated_values = [1:(size(EmissPlot)[1]-1)/NUM_WAVELENS:size(EmissPlot)[1]]
+        interpolated_values =
+            [1:((size(EmissPlot)[1] - 1) / NUM_WAVELENS):size(EmissPlot)[1]]
 
         InterpolatedEmissPlot = interpolate(EmissPlot, BSpline(Linear()))
         InterpolatedSample = [InterpolatedEmissPlot(value) for value in interpolated_values]
         push!(emiss_list, InterpolatedSample)
     end
 
-    out = Tuple{LaserParams,Any}[]
-
+    out = Tuple{LaserParams, Any}[]
 
     for i in 1:size(emiss_list)[1]
-
         push!(
             out,
             (
-                LaserParams(parse(Float64, wavelength_list[i]), laser_power_W_list[i], x_speed_list[i], y_spacing_list[i], parse(Float64, frequency_list[i])), #make the laserparams
-                emiss_list[i]
-                )
-            )
-            
+                LaserParams(
+                    parse(Float64, wavelength_list[i]),
+                    laser_power_W_list[i],
+                    x_speed_list[i],
+                    y_spacing_list[i],
+                    parse(Float64, frequency_list[i]),
+                ), # make the laserparams
+                emiss_list[i],
+            ),
+        )
     end
 
     out
-
 end
 
-
 function getobs_all(::Type{Spheroid})
-    client = Mongoc.Client("mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt")
+    client = Mongoc.Client(
+        "mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt",
+    )
     db = client["propopt"]
     simulations = db["simulations"]
     geometries = db["geometries"]
 
+    out = Tuple{Spheroid, InterpolatedEmissPlot}[]
 
-    out = Tuple{Spheroid,InterpolatedEmissPlot}[]
-
-    for (i, sim) in enumerate(Mongoc.find(
-        simulations,
-        BSON(Dict(
-            # Skip multiple geometries for now by only taking meshes with 1 geometry (len == 1) that have gold as their id.
-            "material_geometry_mesh" => Dict(raw"$size" => 1),
-            "material_geometry_mesh.material" => GOLD,
-            # TODO make this work
-            # "material_geometry_mesh_detailed.name": "spheroid",
-            # XXX full spectra only (for now). This is why we can directly construct an InterpolatedEmissPlot in `getobs_all`
-            "results" => Dict(raw"$size" => NUM_WAVELENS),
-            "surrounding_material" => VACUUM,
-        )),
-        options = BSON(Dict(
-            "projection" => Dict(
-                "_id" => false,
-                "material_geometry_mesh" => true,
-                "results.wavelength_micron" => true,
-                "results.orientation_av_emissivity" => true,
-                "results.orientation_av_absorption_CrossSection_m2" => true,
-                "results.orientation_av_scattering_CrossSection_m2" => true,
+    for (i, sim) in enumerate(
+        Mongoc.find(
+            simulations,
+            BSON(
+                Dict(
+                    # Skip multiple geometries for now by only taking meshes with 1 geometry (len == 1) that have gold as their id.
+                    "material_geometry_mesh" => Dict(raw"$size" => 1),
+                    "material_geometry_mesh.material" => GOLD,
+                    # TODO make this work
+                    # "material_geometry_mesh_detailed.name": "spheroid",
+                    # XXX full spectra only (for now). This is why we can directly construct an InterpolatedEmissPlot in `getobs_all`
+                    "results" => Dict(raw"$size" => NUM_WAVELENS),
+                    "surrounding_material" => VACUUM,
+                ),
             ),
-        )),
-    ))
-        geometry = sim["material_geometry_mesh"][1]["geometry"] #Dict type?
+            options = BSON(
+                Dict(
+                    "projection" => Dict(
+                        "_id" => false,
+                        "material_geometry_mesh" => true,
+                        "results.wavelength_micron" => true,
+                        "results.orientation_av_emissivity" => true,
+                        "results.orientation_av_absorption_CrossSection_m2" => true,
+                        "results.orientation_av_scattering_CrossSection_m2" => true,
+                    ),
+                ),
+            ),
+        ),
+    )
+        geometry = sim["material_geometry_mesh"][1]["geometry"] # Dict type?
 
         # XXX only handle spherical geoms for now
         # TODO convert old type assertion geom: Dict[str, Dict[str, float]]
@@ -123,13 +142,14 @@ function getobs_all(::Type{Spheroid})
             out,
             (
                 Spheroid(geom["dims"]["rx"], geom["dims"]["rz"]),
-                InterpolatedEmissPlot(sort(
-                    [w => (s, a) for (w, s, a) in (zip(wavelen, scatter, absorption))],
-                )),
+                InterpolatedEmissPlot(
+                    sort([
+                        w => (s, a) for (w, s, a) in (zip(wavelen, scatter, absorption))
+                    ],),
+                ),
             ),
         )
     end
 
     out
-
 end

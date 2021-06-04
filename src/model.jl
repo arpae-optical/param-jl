@@ -63,8 +63,8 @@ function forwards_model()
         [entry[1].freq, 
         entry[1].wavelen, 
         entry[1].laser_power_W,
-        entry[1].laser_scan_spacing_x,
-        entry[1].laser_y_speed
+        entry[1].laser_scanning_speed_x_dir_mm_per_s,
+        entry[1].laser_scanning_line_spacing_y_dir_micron
         ] for entry in data
         ] |> gpu
     #deconstruct data back into vector
@@ -96,4 +96,4 @@ function forwards_model()
     plot([1:100], validation_list)
 end
 
-forwards_model()
+backwards_model()
