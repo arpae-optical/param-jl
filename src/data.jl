@@ -1,40 +1,58 @@
 getobs_all(::Type{T}; num_obs::Integer = 10^4) where {T<:ExactGeometry} = rand(T, num_obs)
+using FastAI, Plots, Flux, StaticArrays, LearnBase, Mongoc, CSV, DataFrames, Distributions, Interpolations
 
-function getobs_all(::Type{LaserParams})
+include("constants.jl")
+include("types.jl")
+
+function getobs_laser()
     client = Mongoc.Client("mongodb://propopt_ro:2vsz634dwrwwsq@mongodb07.nersc.gov/propopt")
     db = client["propopt"]
-    emiss_wavelength = db["emissivity_spectrum"]["wavelength_micron"]
-    wavelength = db["laser_wavelength_nm"]
-    laser_power_W = db["laser_power_W"]
-    x_speed = db["laser_scanning_speed_x_dir_mm_per_s"]
-    y_speed = db["laser_scanning_speed_y_dir_mm_per_s"]
-    x_spacing= db["laser_scanning_line_spacing_x_dir_micron"]
-    y_spacing = db["laser_scanning_line_spacing_y_dir_micron"]
-    frequency = db["laser_repetition_rate_kHz"]
+    laser_samples = db["laser_samples"]
 
+    emiss_list = []
+    wavelength_list = []
+    laser_power_W_list = []
+    x_speed_list = []
+    y_spacing_list = []
+    frequency_list = []
+    
+    for entry in laser_samples
+        push!(wavelength_list, entry["laser_wavelength_nm"])
+        push!(laser_power_W_list, entry["laser_power_W"])
+        push!(x_speed_list, entry["laser_scanning_speed_x_dir_mm_per_s"])
+        push!(y_spacing_list, entry["laser_scanning_line_spacing_y_dir_micron"])
+        push!(frequency_list, entry["laser_repetition_rate_kHz"])
+        EmissPlot = []
+        emiss = entry["emissivity_spectrum"]
+        for ex in emiss
+            push!(EmissPlot, ex["normal_emissivity"])
+        end
+        interpolated_values = [1:(size(EmissPlot)[1]-1)/NUM_WAVELENS:size(EmissPlot)[1]]
 
-    out = Tuple{}[]
-    list_of_emiss_wavelengths = []
-    for (i, sim) in #number of examples
-        #add wavelength to list if it's unique
+        InterpolatedEmissPlot = interpolate(EmissPlot, BSpline(Linear()))
+        InterpolatedSample = [InterpolatedEmissPlot(value) for value in interpolated_values]
+        push!(emiss_list, InterpolatedSample)
     end
 
-    num_wavelens = size(list_of_emiss_wavelengths)
+    out = Tuple{LaserParams,Any}[]
 
-    for (i, sim) in #number of examples
+
+    for i in 1:size(emiss_list)[1]
+
         push!(
             out,
             (
-                LaserParams(wavelength[i], laser_power_W[i], x_speed[i], y_speed[i], x_spacing[i], y_spacing[i], frequency[i]),
-                InterpolatedEmissPlot(emiss_wavelength[i]::SVector{num_wavelens,Pair{Wavelen,Emiss}}},
-                )),
-            ),
-        )
+                LaserParams(parse(Float64, wavelength_list[i]), laser_power_W_list[i], x_speed_list[i], y_spacing_list[i], parse(Float64, frequency_list[i])), #make the laserparams
+                emiss_list[i]
+                )
+            )
+            
     end
 
     out
 
 end
+
 
 function getobs_all(::Type{Spheroid})
     client = Mongoc.Client("mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt")
