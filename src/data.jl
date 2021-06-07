@@ -20,40 +20,36 @@ function getobs_laser()
     laser_samples = db["laser_samples"]
 
     emiss_list = []
-    wavelength_list = []
-    laser_power_W_list = []
     x_speed_list = []
     y_spacing_list = []
     frequency_list = []
 
     for entry in laser_samples
-        push!(wavelength_list, entry["laser_wavelength_nm"])
-        push!(laser_power_W_list, entry["laser_power_W"])
-        push!(x_speed_list, entry["laser_scanning_speed_x_dir_mm_per_s"])
-        push!(y_spacing_list, entry["laser_scanning_line_spacing_y_dir_micron"])
-        push!(frequency_list, entry["laser_repetition_rate_kHz"])
-        EmissPlot = []
+        EmissPlot = Float64[]
         emiss = entry["emissivity_spectrum"]
         for ex in emiss
             push!(EmissPlot, ex["normal_emissivity"])
         end
-        interpolated_values =
-            [1:((size(EmissPlot)[1] - 1) / NUM_WAVELENS):size(EmissPlot)[1]]
-
-        InterpolatedEmissPlot = interpolate(EmissPlot, BSpline(Linear()))
-        InterpolatedSample = [InterpolatedEmissPlot(value) for value in interpolated_values]
-        push!(emiss_list, InterpolatedSample)
+        size_flag = true
+        if size(EmissPlot) != (935,)
+            size_flag = false
+        end
+        if size_flag == true
+            push!(x_speed_list, entry["laser_scanning_speed_x_dir_mm_per_s"])
+            push!(y_spacing_list, entry["laser_scanning_line_spacing_y_dir_micron"])
+            push!(frequency_list, entry["laser_repetition_rate_kHz"])
+            
+            push!(emiss_list, EmissPlot)
+        end
     end
 
-    out = Tuple{LaserParams, Any}[]
+    out = Tuple{LaserParams, Vector{Float64}}[]
 
-    for i in 1:size(emiss_list)[1]
+    for i in 1:1000 #should be 1:size(emiss_list)[1]
         push!(
             out,
             (
                 LaserParams(
-                    parse(Float64, wavelength_list[i]),
-                    laser_power_W_list[i],
                     x_speed_list[i],
                     y_spacing_list[i],
                     parse(Float64, frequency_list[i]),
