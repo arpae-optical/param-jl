@@ -47,13 +47,13 @@ input_tensor = []
 label_tensor = []
 
 for i in range(len(emiss_list)):
-    label_tensor.append([
+    input_tensor.append([
                 x_speed_list[i],
                 y_spacing_list[i],
                 float(frequency_list[i])
             ]
             )
-    input_tensor.append(
+    label_tensor.append(
             emiss_list[i]
         )
 
@@ -63,12 +63,12 @@ class Net(nn.Module):
         super(Net, self).__init__()
         # 1 input image channel, 6 output channels, 5x5 square convolution
         # kernel
-        self.fc1 = nn.Linear(935, 32)  # 5*5 from image dimension
+        self.fc1 = nn.Linear(3, 32)  # 5*5 from image dimension
         self.fc2 = nn.Linear(32, 64)
         self.fc3 = nn.Linear(64, 128)
         self.fc4 = nn.Linear(128, 64)
         self.fc5 = nn.Linear(64, 32)
-        self.fc6 = nn.Linear(32, 3)
+        self.fc6 = nn.Linear(32, 935)
     def forward(self, x):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
@@ -86,9 +86,7 @@ input = zip(torch.FloatTensor(input_tensor), torch.FloatTensor(label_tensor))
 
 criterion = nn.MSELoss()
 optimizer = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
-
 loss_list = []
-
 for epoch in range(100):  # loop over the dataset multiple times
 
     running_loss = 0.0
@@ -107,9 +105,9 @@ for epoch in range(100):  # loop over the dataset multiple times
         optimizer.step()
 
         running_loss += loss.item()
-        if i % 10 == 9:    # print every 2000 mini-batches
+        if i % 100 == 99:    # print every 2000 mini-batches
             print('[%d, %5d] loss: %.3f' %
-                  (epoch + 1, i + 1, running_loss / 10))
+                  (epoch + 1, i + 1, running_loss))
             loss_list.append(running_loss)
             running_loss = 0.0
 
