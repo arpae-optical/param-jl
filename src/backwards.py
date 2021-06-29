@@ -17,27 +17,20 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 from tqdm import tqdm, trange
 
-from forwards import ForwardDataModule, ForwardModel, get_data
+import data
+from forwards import ForwardModel
 from utils import Stage, split
-
-parser = argparse.ArgumentParser()
-
-parser.add_argument("--num-epochs", "-n", type=int, default=100_000)
-parser.add_argument("--batch-size", "-b", type=int, default=2 ** 10)
-args = parser.parse_args()
 
 
 class BackwardDataModule(pl.LightningDataModule):
-    def __init__(
-        self,
-        batch_size: int = args.batch_size,
-    ) -> None:
+    def __init__(self, batch_size: int, use_cache: bool = True) -> None:
         super().__init__()
         self.batch_size = batch_size
+        self.use_cache = use_cache
 
     def setup(self, stage: Optional[str]) -> None:
 
-        output, input = get_data()
+        output, input = data.get_data(self.use_cache)
 
         splits = split(len(input))
         self.train = TensorDataset(
@@ -81,19 +74,16 @@ class BackwardDataModule(pl.LightningDataModule):
         )
 
 
-Mode = Literal["forward", "backward"]
-
-
 class BackwardModel(pl.LightningModule):
-    def __init__(self, forward_model):
+    def __init__(self, forward_model: ForwardModel):
         super().__init__()
         # self.save_hyperparameters()
         self.forward_model = forward_model
         self.forward_model.freeze()
         self.backward_model = nn.Sequential(
             nn.Sigmoid(),
-            nn.LayerNorm(935),
-            nn.Linear(935, 128),
+            nn.LayerNorm(935 - 1),
+            nn.Linear(935 - 1, 128),
             nn.GELU(),
             nn.LayerNorm(128),
             nn.Linear(128, 64),
@@ -103,10 +93,9 @@ class BackwardModel(pl.LightningModule):
             nn.GELU(),
             nn.LayerNorm(32),
             nn.Linear(32, 3),
+            # for the normalized laser params
+            nn.Sigmoid(),
         )
-        # TODO how to reverse the *data* in the Linear layers easily? transpose?
-
-        # TODO add mode arg
 
     def forward(self, x):
         return self.backward_model(x)
@@ -134,76 +123,3 @@ class BackwardModel(pl.LightningModule):
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters())
-
-
-forward_trainer = pl.Trainer(
-    max_epochs=10_000,
-    logger=[
-        WandbLogger(
-            name="Forward laser params",
-            save_dir="wandb_logs/forward",
-            offline=False,
-            project="Laser",
-            log_model=True,
-        ),
-        TestTubeLogger(
-            save_dir="test_tube_logs/forward", name="Forward", create_git_tag=False
-        ),
-    ],
-    callbacks=[
-        ModelCheckpoint(
-            monitor="val/loss",
-            dirpath="weights/forward",
-            save_top_k=1,
-            mode="min",
-        ),
-    ],
-    gpus=torch.cuda.device_count(),
-    precision=32,
-    overfit_batches=1,
-    track_grad_norm=2,
-    weights_summary="full",
-    progress_bar_refresh_rate=100,
-    check_val_every_n_epoch=10,
-)
-
-forward_model = ForwardModel()
-forward_data_module = ForwardDataModule(batch_size=3)
-forward_trainer.fit(forward_model, datamodule=forward_data_module)
-
-
-backward_trainer = pl.Trainer(
-    max_epochs=args.num_epochs,
-    logger=[
-        WandbLogger(
-            name="Backward laser params",
-            save_dir="wandb_logs/backward",
-            offline=False,
-            project="Laser",
-            log_model=True,
-        ),
-        TestTubeLogger(
-            save_dir="test_tube_logs/backward", name="Backward", create_git_tag=False
-        ),
-    ],
-    callbacks=[
-        ModelCheckpoint(
-            monitor="val/loss",
-            dirpath="weights/backward",
-            save_top_k=1,
-            mode="min",
-        ),
-    ],
-    gpus=torch.cuda.device_count(),
-    precision=32,
-    overfit_batches=1,
-    track_grad_norm=2,
-    weights_summary="full",
-    progress_bar_refresh_rate=100,
-    check_val_every_n_epoch=10,
-)
-
-
-backward_model = BackwardModel(forward_model=forward_model)
-backward_data_module = BackwardDataModule()
-backward_trainer.fit(backward_model, datamodule=backward_data_module)
