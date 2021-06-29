@@ -17,21 +17,17 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 from tqdm import tqdm, trange
 
-from utils import split
+from forwards import ForwardDataModule, ForwardModel, get_data
+from utils import Stage, split
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--num-epochs", "-n", type=int, default=1_000_000)
+parser.add_argument("--num-epochs", "-n", type=int, default=100_000)
 parser.add_argument("--batch-size", "-b", type=int, default=2 ** 10)
 args = parser.parse_args()
 
-client = pymongo.MongoClient(
-    "mongodb://propopt_ro:2vsz634dwrwwsq@mongodb07.nersc.gov/propopt"
-)
-db = client.propopt.laser_samples
 
-
-class DataModule(pl.LightningDataModule):
+class BackwardDataModule(pl.LightningDataModule):
     def __init__(
         self,
         batch_size: int = args.batch_size,
@@ -41,26 +37,8 @@ class DataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str]) -> None:
 
-        input, output = [], []
+        output, input = get_data()
 
-        for entry in tqdm(db.find()):
-            emiss_plot: List[float] = [
-                ex["normal_emissivity"] for ex in entry["emissivity_spectrum"]
-            ]
-            # drop all problematic emiss (only 3% of data dropped)
-            if len(emiss_plot) != 935:
-                continue
-
-            output.append(
-                [
-                    entry["laser_scanning_speed_x_dir_mm_per_s"],
-                    entry["laser_scanning_line_spacing_y_dir_micron"],
-                    float(entry["laser_repetition_rate_kHz"]),
-                ]
-            )
-            input.append(emiss_plot)
-
-        input, output = torch.FloatTensor(input), torch.FloatTensor(output)
         splits = split(len(input))
         self.train = TensorDataset(
             input[splits["train"].start : splits["train"].stop],
@@ -106,49 +84,95 @@ class DataModule(pl.LightningDataModule):
 Mode = Literal["forward", "backward"]
 
 
-class Model(pl.LightningModule):
-    def __init__(self):
+class BackwardModel(pl.LightningModule):
+    def __init__(self, forward_model):
         super().__init__()
         # self.save_hyperparameters()
-        self.model = nn.Sequential(
+        self.forward_model = forward_model
+        self.forward_model.freeze()
+        self.backward_model = nn.Sequential(
+            nn.Sigmoid(),
+            nn.LayerNorm(935),
             nn.Linear(935, 128),
-            nn.ReLU(),
-            nn.Linear(128, 3),
-            # nn.ReLU(),
-            # nn.Linear(64, 32),
-            # nn.ReLU(),
-            # nn.Linear(32, 3),
+            nn.GELU(),
+            nn.LayerNorm(128),
+            nn.Linear(128, 64),
+            nn.GELU(),
+            nn.LayerNorm(64),
+            nn.Linear(64, 32),
+            nn.GELU(),
+            nn.LayerNorm(32),
+            nn.Linear(32, 3),
         )
         # TODO how to reverse the *data* in the Linear layers easily? transpose?
 
         # TODO add mode arg
 
     def forward(self, x):
-        return self.model(x)
+        return self.backward_model(x)
 
-    def training_step(self, batch, batch_idx):
-        x, y = batch
-        loss = F.mse_loss(self(x), y)
-        self.log("train/loss", loss)
-        return loss
+    def training_step(self, batch, batch_nb):
+        return self._step(batch, batch_nb, stage="train")
 
     def validation_step(self, batch, batch_nb):
-        x, y = batch
-        loss = F.mse_loss(self(x), y)
-        self.log("val/loss", loss)
-        return loss
+        return self._step(batch, batch_nb, stage="val")
 
     def test_step(self, batch, batch_nb):
-        x, y = batch
-        loss = F.mse_loss(self(x), y)
-        self.log("test/loss", loss)
+        return self._step(batch, batch_nb, stage="test")
+
+    def _step(self, batch, batch_nb, stage: Stage):
+        y, x = batch
+        x_pred = self(y)
+        y_pred = self.forward_model(x_pred)
+        y_loss = F.mse_loss(y_pred, y).sqrt()
+        x_loss = F.mse_loss(x_pred, x).sqrt()
+        loss = x_loss + y_loss
+        self.log(f"{stage}/x/loss", x_loss)
+        self.log(f"{stage}/y/loss", y_loss)
+        self.log(f"{stage}/loss", loss)
         return loss
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters())
 
 
-trainer = pl.Trainer(
+forward_trainer = pl.Trainer(
+    max_epochs=10_000,
+    logger=[
+        WandbLogger(
+            name="Forward laser params",
+            save_dir="wandb_logs/forward",
+            offline=False,
+            project="Laser",
+            log_model=True,
+        ),
+        TestTubeLogger(
+            save_dir="test_tube_logs/forward", name="Forward", create_git_tag=False
+        ),
+    ],
+    callbacks=[
+        ModelCheckpoint(
+            monitor="val/loss",
+            dirpath="weights/forward",
+            save_top_k=1,
+            mode="min",
+        ),
+    ],
+    gpus=torch.cuda.device_count(),
+    precision=32,
+    overfit_batches=1,
+    track_grad_norm=2,
+    weights_summary="full",
+    progress_bar_refresh_rate=100,
+    check_val_every_n_epoch=10,
+)
+
+forward_model = ForwardModel()
+forward_data_module = ForwardDataModule(batch_size=3)
+forward_trainer.fit(forward_model, datamodule=forward_data_module)
+
+
+backward_trainer = pl.Trainer(
     max_epochs=args.num_epochs,
     logger=[
         WandbLogger(
@@ -157,7 +181,6 @@ trainer = pl.Trainer(
             offline=False,
             project="Laser",
             log_model=True,
-            sync_step=True,
         ),
         TestTubeLogger(
             save_dir="test_tube_logs/backward", name="Backward", create_git_tag=False
@@ -173,13 +196,14 @@ trainer = pl.Trainer(
     ],
     gpus=torch.cuda.device_count(),
     precision=32,
-    # overfit_batches=1,
-    # track_grad_norm=2,
+    overfit_batches=1,
+    track_grad_norm=2,
     weights_summary="full",
     progress_bar_refresh_rate=100,
     check_val_every_n_epoch=10,
 )
 
-model = Model()
-data_module = DataModule()
-trainer.fit(model, datamodule=data_module)
+
+backward_model = BackwardModel(forward_model=forward_model)
+backward_data_module = BackwardDataModule()
+backward_trainer.fit(backward_model, datamodule=backward_data_module)
