@@ -35,11 +35,12 @@ from backwards import BackwardDataModule, BackwardModel
 from forwards import ForwardDataModule, ForwardModel
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--forward-num-epochs", "-bn", type=int, default=2_000)
-parser.add_argument("--backward-num-epochs", "-fn", type=int, default=2_000)
+parser.add_argument("--forward-num-epochs", "--fe", type=int, default=2_000)
+parser.add_argument("--backward-num-epochs", "--be", type=int, default=2_000)
 parser.add_argument("--forward-batch-size", "--fb", type=int, default=256)
 parser.add_argument("--backward-batch-size", "--bb", type=int, default=256)
 parser.add_argument("--use-cache", type=eval, choices=[True, False], default=True)
+parser.add_argument("--use-fwd", type=eval, choices=[True, False], default=True)
 args = parser.parse_args()
 
 
@@ -107,14 +108,17 @@ backward_trainer = pl.Trainer(
     check_val_every_n_epoch=10,
 )
 
-forward_model = ForwardModel()
-forward_data_module = ForwardDataModule(
-    batch_size=args.forward_batch_size,
-    use_cache=args.use_cache,
-)
-forward_trainer.fit(forward_model, datamodule=forward_data_module)
+if args.use_fwd:
+    forward_model = ForwardModel()
+    forward_data_module = ForwardDataModule(
+        batch_size=args.forward_batch_size,
+        use_cache=args.use_cache,
+    )
+    forward_trainer.fit(forward_model, datamodule=forward_data_module)
+    backward_model = BackwardModel(forward_model=forward_model )
+else:
+    backward_model = BackwardModel(forward_model=None)
 
-backward_model = BackwardModel(forward_model=forward_model)
 backward_data_module = BackwardDataModule(
     batch_size=args.backward_batch_size,
     use_cache=args.use_cache,

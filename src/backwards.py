@@ -19,7 +19,7 @@ from tqdm import tqdm, trange
 
 import data
 from forwards import ForwardModel
-from utils import Stage, split
+from utils import Stage, rmse, split
 
 
 class BackwardDataModule(pl.LightningDataModule):
@@ -75,29 +75,35 @@ class BackwardDataModule(pl.LightningDataModule):
 
 
 class BackwardModel(pl.LightningModule):
-    def __init__(self, forward_model: ForwardModel):
+    def __init__(self, forward_model: Optional[ForwardModel] = None):
         super().__init__()
         # self.save_hyperparameters()
-        self.forward_model = forward_model
-        self.forward_model.freeze()
+        if forward_model is None:
+            self.forward_model = None
+        else:
+            self.forward_model = forward_model
+            self.forward_model.freeze()
         self.backward_model = nn.Sequential(
-            nn.Sigmoid(),
-            nn.LayerNorm(935 - 1),
-            nn.Linear(935 - 1, 128),
+            nn.LazyConv1d(2 ** 9, kernel_size=1),
             nn.GELU(),
-            nn.LayerNorm(128),
-            nn.Linear(128, 64),
+            nn.LazyBatchNorm1d(),
+            nn.LazyConv1d(2 ** 10, kernel_size=1),
             nn.GELU(),
-            nn.LayerNorm(64),
-            nn.Linear(64, 32),
+            nn.LazyBatchNorm1d(),
+            nn.LazyConv1d(2 ** 11, kernel_size=1),
             nn.GELU(),
-            nn.LayerNorm(32),
-            nn.Linear(32, 3),
+            nn.LazyBatchNorm1d(),
+            nn.Flatten(),
+            nn.LazyLinear(3),
             # for the normalized laser params
             nn.Sigmoid(),
         )
+        # XXX this call *must* happen to initialize the lazy layers
+        self.backward_model(torch.empty(3, 934, 1))
 
     def forward(self, x):
+        if x.ndim == 2:
+            x = x.unsqueeze(-1)
         return self.backward_model(x)
 
     def training_step(self, batch, batch_nb):
@@ -110,15 +116,18 @@ class BackwardModel(pl.LightningModule):
         return self._step(batch, batch_nb, stage="test")
 
     def _step(self, batch, batch_nb, stage: Stage):
-        y, x = batch
+        y, x = (emiss, laser_params) = batch
+
         x_pred = self(y)
-        y_pred = self.forward_model(x_pred)
-        y_loss = F.mse_loss(y_pred, y).sqrt()
-        x_loss = F.mse_loss(x_pred, x).sqrt()
-        loss = x_loss + y_loss
-        self.log(f"{stage}/x/loss", x_loss)
-        self.log(f"{stage}/y/loss", y_loss)
-        self.log(f"{stage}/loss", loss)
+        x_loss = rmse(x_pred, x)
+        loss = x_loss
+        self.log(f"{stage}/x/loss", x_loss, prog_bar=True, on_step=True)
+        if self.forward_model is not None:
+            y_pred = self.forward_model(x_pred)
+            y_loss = rmse(y_pred, y)
+            self.log(f"{stage}/y/loss", y_loss, prog_bar=True, on_step=True)
+            loss = x_loss + y_loss
+        self.log(f"{stage}/loss", loss, prog_bar=True, on_step=True)
         return loss
 
     def configure_optimizers(self):
