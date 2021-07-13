@@ -3,28 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import itertools
-import os
-import random
-import re
-import shutil
-import subprocess
-import sys
-from copy import deepcopy
-from dataclasses import dataclass, field
-from functools import lru_cache, reduce
-from itertools import chain, product
-from os import PathLike
-from pathlib import Path
-from typing import (
-    Dict,
-    Iterable,
-    List,
-    Mapping,
-    NamedTuple,
-    Optional,
-    Sequence,
-)
 
 import pytorch_lightning as pl
 import torch
@@ -115,7 +93,7 @@ if args.use_fwd:
         use_cache=args.use_cache,
     )
     forward_trainer.fit(forward_model, datamodule=forward_data_module)
-    backward_model = BackwardModel(forward_model=forward_model )
+    backward_model = BackwardModel(forward_model=forward_model)
 else:
     backward_model = BackwardModel(forward_model=None)
 

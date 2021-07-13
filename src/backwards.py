@@ -1,21 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import argparse
-import os
-from typing import Dict, List, Literal, Mapping, NamedTuple, Optional, Sequence
+from typing import Optional
 
-import matplotlib.pyplot as plt
-import pymongo
 import pytorch_lightning as pl
 import torch
-import torch.nn.functional as F
-import torch.optim as optim
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import TestTubeLogger, WandbLogger
 from torch import nn
-from torch.utils.data import DataLoader, Dataset, TensorDataset
-from tqdm import tqdm, trange
+from torch.utils.data import DataLoader, TensorDataset
 
 import data
 from forwards import ForwardModel
