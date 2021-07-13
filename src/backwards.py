@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+import random
 
 from typing import Optional
 
@@ -98,27 +99,66 @@ class BackwardModel(pl.LightningModule):
         return self.backward_model(x)
 
     def training_step(self, batch, batch_nb):
-        return self._step(batch, batch_nb, stage="train")
+        # TODO: plot
+        y, x = (emiss, laser_params) = batch
+
+        x_pred = self(y)
+        x_loss = rmse(x_pred, x)
+        if random.random()<.01:
+            print(f'{x_pred = }')
+            print(f'{x = }')
+        loss = x_loss
+        self.log("train/x/loss", x_loss, prog_bar=True)
+        if self.forward_model is not None:
+            y_pred = self.forward_model(x_pred)
+            y_loss = rmse(y_pred, y)
+            self.log(
+                "train/y/loss",
+                y_loss,
+                prog_bar=True,
+            )
+            loss = x_loss + y_loss
+        self.log(f"train/loss", loss, prog_bar=True)
+        return loss
 
     def validation_step(self, batch, batch_nb):
-        return self._step(batch, batch_nb, stage="val")
-
-    def test_step(self, batch, batch_nb):
-        return self._step(batch, batch_nb, stage="test")
-
-    def _step(self, batch, batch_nb, stage: Stage):
+        # TODO: plot
         y, x = (emiss, laser_params) = batch
 
         x_pred = self(y)
         x_loss = rmse(x_pred, x)
         loss = x_loss
-        self.log(f"{stage}/x/loss", x_loss, prog_bar=True, on_step=True)
+        self.log("val/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
-            self.log(f"{stage}/y/loss", y_loss, prog_bar=True, on_step=True)
+            self.log(
+                "val/y/loss",
+                y_loss,
+                prog_bar=True,
+            )
             loss = x_loss + y_loss
-        self.log(f"{stage}/loss", loss, prog_bar=True, on_step=True)
+        self.log(f"val/loss", loss, prog_bar=True)
+        return loss
+
+    def test_step(self, batch, batch_nb):
+        # TODO: plot
+        y, x = (emiss, laser_params) = batch
+
+        x_pred = self(y)
+        x_loss = rmse(x_pred, x)
+        loss = x_loss
+        self.log("test/x/loss", x_loss, prog_bar=True)
+        if self.forward_model is not None:
+            y_pred = self.forward_model(x_pred)
+            y_loss = rmse(y_pred, y)
+            self.log(
+                "test/y/loss",
+                y_loss,
+                prog_bar=True,
+            )
+            loss = x_loss + y_loss
+        self.log(f"test/loss", loss, prog_bar=True)
         return loss
 
     def configure_optimizers(self):
