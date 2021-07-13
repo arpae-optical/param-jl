@@ -35,6 +35,8 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
 
         for entry in tqdm(db.find()):
             # XXX: chop off the top emissivity since it's always 1 and I think that's a bug. The `[1:]` does that
+            # TODO: ensure that this is sorted by wavelength
+            # TODO log transform?
             emiss_plot: List[float] = [
                 ex["normal_emissivity"] for ex in entry["emissivity_spectrum"][1:]
             ]
