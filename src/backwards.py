@@ -75,13 +75,13 @@ class BackwardModel(pl.LightningModule):
             self.forward_model = forward_model
             self.forward_model.freeze()
         self.backward_model = nn.Sequential(
-            nn.LazyConv1d(2 ** 9, kernel_size=1),
-            nn.GELU(),
-            nn.LazyBatchNorm1d(),
-            nn.LazyConv1d(2 ** 10, kernel_size=1),
-            nn.GELU(),
-            nn.LazyBatchNorm1d(),
             nn.LazyConv1d(2 ** 11, kernel_size=1),
+            nn.GELU(),
+            nn.LazyBatchNorm1d(),
+            nn.LazyConv1d(2 ** 12, kernel_size=1),
+            nn.GELU(),
+            nn.LazyBatchNorm1d(),
+            nn.LazyConv1d(2 ** 13, kernel_size=1),
             nn.GELU(),
             nn.LazyBatchNorm1d(),
             nn.Flatten(),
