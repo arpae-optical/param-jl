@@ -13,6 +13,8 @@ matplotlib = "*"
 numpy = "*"
 torchmetrics = "*"
 rich = "*"
+wandb = "*"
+test-tube = "*"
 
 [dev-packages]
 
