@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import random
 
+import random
 from typing import Optional
 
 import pytorch_lightning as pl
@@ -104,9 +104,9 @@ class BackwardModel(pl.LightningModule):
 
         x_pred = self(y)
         x_loss = rmse(x_pred, x)
-        if random.random()<.01:
-            print(f'{x_pred = }')
-            print(f'{x = }')
+        if random.random() < 0.01:
+            print(f"{x_pred = }")
+            print(f"{x = }")
         loss = x_loss
         self.log("train/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
