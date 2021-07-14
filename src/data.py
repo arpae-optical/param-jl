@@ -33,7 +33,9 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
         db = client.propopt.laser_samples
         laser_params, emissivity = [], []
 
-        for entry in tqdm(db.find()):
+        # TODO: relax this to all wattages, try discretizing them w/
+        # softmax instead
+        for entry in tqdm(db.find({"laser_power_W": 0.7})):
             # XXX: chop off the top emissivity since it's always 1 and I think that's a bug. The `[1:]` does that
             # TODO: ensure that this is sorted by wavelength
             # TODO log transform?
@@ -51,10 +53,12 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
                 [
                     entry["laser_scanning_speed_x_dir_mm_per_s"],
                     entry["laser_scanning_line_spacing_y_dir_micron"],
+                    # TODO these should be computed by the model doing actual averaging, not direct prediction
+                    entry["emissivity_averaged_over_frequency"],
+                    entry["emissivity_averaged_over_wavelength"],
                     # XXX laser_rep_rate and wavelength_nm are all the same
                     # float(entry["laser_repetition_rate_kHz"]),
                     # float(entry["laser_wavelength_nm"]),
-                    float(entry["laser_power_W"]),
                 ]
             )
             emissivity.append(emiss_plot)

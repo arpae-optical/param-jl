@@ -86,7 +86,7 @@ class BackwardModel(pl.LightningModule):
             nn.GELU(),
             nn.LazyBatchNorm1d(),
             nn.Flatten(),
-            nn.LazyLinear(3),
+            nn.LazyLinear(4),
             # for the normalized laser params
             nn.Sigmoid(),
         )
