@@ -10,7 +10,7 @@ from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
 import data
-from utils import Stage, split
+from utils import Stage, split,rmse
 
 
 class ForwardDataModule(pl.LightningDataModule):
@@ -76,13 +76,13 @@ class ForwardModel(pl.LightningModule):
         super().__init__()
         # self.save_hyperparameters()
         self.model = nn.Sequential(
-            nn.LazyConv1d(2 ** 9, kernel_size=1),
-            nn.GELU(),
-            nn.LazyBatchNorm1d(),
-            nn.LazyConv1d(2 ** 10, kernel_size=1),
-            nn.GELU(),
-            nn.LazyBatchNorm1d(),
             nn.LazyConv1d(2 ** 11, kernel_size=1),
+            nn.GELU(),
+            nn.LazyBatchNorm1d(),
+            nn.LazyConv1d(2 ** 12, kernel_size=1),
+            nn.GELU(),
+            nn.LazyBatchNorm1d(),
+            nn.LazyConv1d(2 ** 13, kernel_size=1),
             nn.GELU(),
             nn.LazyBatchNorm1d(),
             nn.Flatten(),
@@ -92,8 +92,8 @@ class ForwardModel(pl.LightningModule):
         # TODO use convnet
         # self.model = nn.Sequential()
         # TODO how to reverse the *data* in the Linear layers easily? transpose?
-        # XXX this call *must* happen to initialize the lazy layers
-        self.model(torch.empty(3, 2, 1))
+        # XXX This call *must* happen to initialize the lazy layers
+        self.model(torch.empty(3, 4, 1))
 
     def forward(self, x):
         # add dummy dim
@@ -102,20 +102,25 @@ class ForwardModel(pl.LightningModule):
         return self.model(x)
 
     def training_step(self, batch, batch_nb):
-        return self._step(batch, batch_nb, stage="train")
-
-    def validation_step(self, batch, batch_nb):
-        return self._step(batch, batch_nb, stage="val")
-
-    def test_step(self, batch, batch_nb):
-        return self._step(batch, batch_nb, stage="test")
-
-    def _step(self, batch, batch_nb, stage: Stage):
         x, y = batch
         y_pred = self(x)
-        loss = F.mse_loss(y_pred, y).sqrt()
-        self.log(f"{stage}/loss", loss)
+        loss = rmse(y_pred, y)
+        self.log(f"train/loss", loss, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_nb):
+        x, y = batch
+        y_pred = self(x)
+        loss = rmse(y_pred, y)
+        self.log(f"val/loss", loss, prog_bar=True)
+        return loss
+
+    def test_step(self, batch, batch_nb):
+        x, y = batch
+        y_pred = self(x)
+        loss = rmse(y_pred, y)
+        self.log(f"test/loss", loss, prog_bar=True)
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters())
+        return torch.optim.Adam(self.parameters(), lr=1e-6)
