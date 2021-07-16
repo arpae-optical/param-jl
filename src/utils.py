@@ -2,22 +2,21 @@
 
 
 from __future__ import annotations
-from torch import Tensor
 
 from math import floor
-from typing import (
-    Dict,
-    Literal,
-    Mapping,
-    Optional,
-)
+from typing import Dict, Literal, Mapping, Optional
 
 import torch
+from torch import Tensor
 
 Stage = Literal["train", "val", "test"]
 
 # TODO replace with scanl
 def split(n: int, splits: Optional[Mapping[Stage, float]] = None) -> Dict[Stage, range]:
+    """
+    n: length of dataset
+    splits: map where values should sum to 1 like in `{"train": 0.8, "val": 0.1, "test": 0.1}`
+    """
     if splits is None:
         splits = {"train": 0.8, "val": 0.1, "test": 0.1}
     return {
@@ -31,4 +30,5 @@ def split(n: int, splits: Optional[Mapping[Stage, float]] = None) -> Dict[Stage,
 
 
 def rmse(pred: Tensor, target: Tensor):
+    """Root mean squared error."""
     return torch.nn.functional.mse_loss(pred, target).sqrt()
