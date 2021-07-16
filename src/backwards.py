@@ -103,7 +103,8 @@ class BackwardModel(pl.LightningModule):
         y, x = (emiss, laser_params) = batch
 
         x_pred = self(y)
-        x_loss = rmse(x_pred, x)
+        with torch.no_grad():
+            x_loss = rmse(x_pred, x)
         if random.random() < 0.01:
             print(f"{x_pred = }")
             print(f"{x = }")
@@ -126,7 +127,8 @@ class BackwardModel(pl.LightningModule):
         y, x = (emiss, laser_params) = batch
 
         x_pred = self(y)
-        x_loss = rmse(x_pred, x)
+        with torch.no_grad():
+            x_loss = rmse(x_pred, x)
         loss = x_loss
         self.log("val/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
@@ -146,7 +148,8 @@ class BackwardModel(pl.LightningModule):
         y, x = (emiss, laser_params) = batch
 
         x_pred = self(y)
-        x_loss = rmse(x_pred, x)
+        with torch.no_grad():
+            x_loss = rmse(x_pred, x)
         loss = x_loss
         self.log("test/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
@@ -162,4 +165,4 @@ class BackwardModel(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters())
+        return torch.optim.Adam(self.parameters(), lr=1e-6)
