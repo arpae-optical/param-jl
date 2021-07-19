@@ -6,3 +6,5 @@
 - renorm data
 - fix data and learn something
 - or just solve the problem directly for inverse
+
+parametrize *everything* (for tuning)
