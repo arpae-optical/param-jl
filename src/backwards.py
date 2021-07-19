@@ -78,12 +78,15 @@ class BackwardModel(pl.LightningModule):
         self.backward_model = nn.Sequential(
             nn.LazyConv1d(2 ** 11, kernel_size=1),
             nn.GELU(),
+            nn.Dropout(.5),
             nn.LazyBatchNorm1d(),
             nn.LazyConv1d(2 ** 12, kernel_size=1),
             nn.GELU(),
+            nn.Dropout(.5),
             nn.LazyBatchNorm1d(),
             nn.LazyConv1d(2 ** 13, kernel_size=1),
             nn.GELU(),
+            nn.Dropout(.5),
             nn.LazyBatchNorm1d(),
             nn.Flatten(),
             nn.LazyLinear(4),
@@ -105,21 +108,18 @@ class BackwardModel(pl.LightningModule):
         x_pred = self(y)
         with torch.no_grad():
             x_loss = rmse(x_pred, x)
-        if random.random() < 0.01:
-            print(f"{x_pred = }")
-            print(f"{x = }")
         loss = x_loss
-        self.log("train/x/loss", x_loss, prog_bar=True)
+        self.log("backward/train/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
             self.log(
-                "train/y/loss",
+                "backward/train/y/loss",
                 y_loss,
                 prog_bar=True,
             )
-            loss = x_loss + y_loss
-        self.log(f"train/loss", loss, prog_bar=True)
+            loss = y_loss
+        self.log(f"backward/train/loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_nb):
@@ -130,17 +130,17 @@ class BackwardModel(pl.LightningModule):
         with torch.no_grad():
             x_loss = rmse(x_pred, x)
         loss = x_loss
-        self.log("val/x/loss", x_loss, prog_bar=True)
+        self.log("backward/val/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
             self.log(
-                "val/y/loss",
+                "backward/val/y/loss",
                 y_loss,
                 prog_bar=True,
             )
-            loss = x_loss + y_loss
-        self.log(f"val/loss", loss, prog_bar=True)
+            loss = y_loss
+        self.log(f"backward/val/loss", loss, prog_bar=True)
         return loss
 
     def test_step(self, batch, batch_nb):
@@ -151,18 +151,18 @@ class BackwardModel(pl.LightningModule):
         with torch.no_grad():
             x_loss = rmse(x_pred, x)
         loss = x_loss
-        self.log("test/x/loss", x_loss, prog_bar=True)
+        self.log("backward/test/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
             self.log(
-                "test/y/loss",
+                "backward/test/y/loss",
                 y_loss,
                 prog_bar=True,
             )
-            loss = x_loss + y_loss
-        self.log(f"test/loss", loss, prog_bar=True)
+            loss = y_loss
+        self.log(f"backward/test/loss", loss, prog_bar=True)
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-6)
+        return torch.optim.AdamW(self.parameters(), lr=1e-6)

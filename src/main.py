@@ -29,7 +29,7 @@ forward_trainer = pl.Trainer(
             name="Forward laser params",
             save_dir="wandb_logs/forward",
             offline=False,
-            project="Laser",
+            project="Laser Forward",
             log_model=True,
         ),
         TestTubeLogger(
@@ -38,7 +38,7 @@ forward_trainer = pl.Trainer(
     ],
     callbacks=[
         ModelCheckpoint(
-            monitor="train/loss",
+            monitor="forward/train/loss",
             dirpath="weights/forward",
             save_top_k=1,
             mode="min",
@@ -47,7 +47,7 @@ forward_trainer = pl.Trainer(
     gpus=torch.cuda.device_count(),
     precision=32,
     # overfit_batches=1,
-    track_grad_norm=2,
+    # track_grad_norm=2,
     weights_summary="full",
     progress_bar_refresh_rate=100,
     check_val_every_n_epoch=10,
@@ -62,7 +62,7 @@ backward_trainer = pl.Trainer(
             name="Backward laser params",
             save_dir="wandb_logs/backward",
             offline=False,
-            project="Laser",
+            project="Laser Backward",
             log_model=True,
         ),
         TestTubeLogger(
@@ -71,7 +71,7 @@ backward_trainer = pl.Trainer(
     ],
     callbacks=[
         ModelCheckpoint(
-            monitor="train/loss",
+            monitor="backward/train/loss",
             dirpath="weights/backward",
             save_top_k=1,
             mode="min",
