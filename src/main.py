@@ -52,6 +52,7 @@ forward_trainer = pl.Trainer(
     progress_bar_refresh_rate=100,
     check_val_every_n_epoch=10,
     gradient_clip_val=0.5,
+    log_every_n_steps=10,
 )
 
 
