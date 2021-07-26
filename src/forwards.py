@@ -96,7 +96,7 @@ class ForwardModel(pl.LightningModule):
         # self.model = nn.Sequential()
         # TODO how to reverse the *data* in the Linear layers easily? transpose?
         # XXX This call *must* happen to initialize the lazy layers
-        self.model(torch.empty(3, 4, 1))
+        self.model(torch.empty(3, 16, 1))
 
     def forward(self, x):
         # add dummy dim
