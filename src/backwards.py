@@ -78,20 +78,15 @@ class BackwardModel(pl.LightningModule):
         self.backward_model = nn.Sequential(
             nn.LazyConv1d(2 ** 11, kernel_size=1),
             nn.GELU(),
-            nn.Dropout(.5),
-            nn.LazyBatchNorm1d(),
+            nn.Dropout(0.5),
             nn.LazyConv1d(2 ** 12, kernel_size=1),
             nn.GELU(),
-            nn.Dropout(.5),
-            nn.LazyBatchNorm1d(),
+            nn.Dropout(0.5),
             nn.LazyConv1d(2 ** 13, kernel_size=1),
             nn.GELU(),
-            nn.Dropout(.5),
-            nn.LazyBatchNorm1d(),
+            nn.Dropout(0.5),
             nn.Flatten(),
-            nn.LazyLinear(4),
             # for the normalized laser params
-            nn.Sigmoid(),
         )
         # XXX this call *must* happen to initialize the lazy layers
         self.backward_model(torch.empty(3, 934, 1))
