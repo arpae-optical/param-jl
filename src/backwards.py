@@ -6,6 +6,7 @@ from typing import Optional
 
 import pytorch_lightning as pl
 import torch
+import torch.nn.functional as F
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -88,13 +89,23 @@ class BackwardModel(pl.LightningModule):
             nn.Flatten(),
             # for the normalized laser params
         )
+        self.continuous_head = nn.LazyLinear(4)
+        self.discrete_head = nn.LazyLinear(16 - 4)
         # XXX this call *must* happen to initialize the lazy layers
-        self.backward_model(torch.empty(3, 934, 1))
+        _x = self.backward_model(torch.empty(3, 934, 1))
+        self.continuous_head(_x)
+        self.discrete_head(_x)
 
     def forward(self, x):
         if x.ndim == 2:
             x = x.unsqueeze(-1)
-        return self.backward_model(x)
+        b = self.backward_model(x)
+        laser_params = torch.sigmoid(self.continuous_head(b))
+        wattages = F.one_hot(
+            torch.argmax(self.discrete_head(b), dim=-1), num_classes=16 - 4
+        )
+
+        return torch.cat((laser_params, wattages), dim=-1)
 
     def training_step(self, batch, batch_nb):
         # TODO: plot
@@ -108,6 +119,7 @@ class BackwardModel(pl.LightningModule):
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
+
             self.log(
                 "backward/train/y/loss",
                 y_loss,
