@@ -134,7 +134,7 @@ backward_trainer = pl.Trainer(
 
 # TODO: load checkpoint for both forward and back
 if args.use_fwd:
-    forward_model = None if args.load_checkpoint else ForwardModel()
+    forward_model = ForwardModel()
     forward_data_module = ForwardDataModule(
         batch_size=args.forward_batch_size,
         use_cache=args.use_cache,
@@ -142,10 +142,14 @@ if args.use_fwd:
     if not args.load_checkpoint:
         forward_trainer.fit(model=forward_model, datamodule=forward_data_module)
 
-    forward_trainer.test(model=forward_model, datamodule=forward_data_module)
+    forward_trainer.test(
+        model=forward_model,
+        ckpt_path="best",
+        datamodule=forward_data_module,
+    )
     backward_model = BackwardModel(forward_model=forward_model)
 else:
-    backward_model = None if args.load_checkpoint else BackwardModel(forward_model=None)
+    backward_model = BackwardModel(forward_model=None)
 
 backward_data_module = BackwardDataModule(
     batch_size=args.backward_batch_size,
@@ -153,4 +157,8 @@ backward_data_module = BackwardDataModule(
 )
 if not args.load_checkpoint:
     backward_trainer.fit(model=backward_model, datamodule=backward_data_module)
-backward_trainer.test(model=backward_model, datamodule=backward_data_module)
+backward_trainer.test(
+    model=backward_model,
+    ckpt_path="best",
+    datamodule=backward_data_module,
+)
