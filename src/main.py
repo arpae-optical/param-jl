@@ -96,6 +96,7 @@ if args.use_fwd:
         use_cache=args.use_cache,
     )
     forward_trainer.fit(forward_model, datamodule=forward_data_module)
+    forward_trainer.test(forward_model, datamodule=forward_data_module)
     backward_model = BackwardModel(forward_model=forward_model)
 else:
     backward_model = BackwardModel(forward_model=None)
@@ -105,3 +106,4 @@ backward_data_module = BackwardDataModule(
     use_cache=args.use_cache,
 )
 backward_trainer.fit(backward_model, datamodule=backward_data_module)
+backward_trainer.test(backward_model, datamodule=backward_data_module)
