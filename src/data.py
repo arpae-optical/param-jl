@@ -86,7 +86,6 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
                     num_classes=len(wattage_idxs),
                 ),
             ]
-            # params.extend()
             laser_params.append(params)
             emissivity.append(emiss_plot)
 
