@@ -13,12 +13,55 @@ from backwards import BackwardDataModule, BackwardModel
 from forwards import ForwardDataModule, ForwardModel
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--forward-num-epochs", "--fe", type=int, default=2_000)
-parser.add_argument("--backward-num-epochs", "--be", type=int, default=2_000)
-parser.add_argument("--forward-batch-size", "--fbs", type=int, default=256)
-parser.add_argument("--backward-batch-size", "--bbs", type=int, default=256)
-parser.add_argument("--use-cache", type=eval, choices=[True, False], default=True)
-parser.add_argument("--use-fwd", type=eval, choices=[True, False], default=True)
+parser.add_argument(
+    "--forward-num-epochs",
+    "--fe",
+    type=int,
+    default=5_000,
+    help="Number of epochs for forward model",
+)
+parser.add_argument(
+    "--backward-num-epochs",
+    "--be",
+    type=int,
+    default=5_000,
+    help="Number of epochs for backward model",
+)
+parser.add_argument(
+    "--forward-batch-size",
+    "--fbs",
+    type=int,
+    default=512,
+    help="Batch size for forward model",
+)
+parser.add_argument(
+    "--backward-batch-size",
+    "--bbs",
+    type=int,
+    default=512,
+    help="Batch size for backward model",
+)
+parser.add_argument(
+    "--use-cache",
+    type=eval,
+    choices=[True, False],
+    default=False,
+    help="Load saved dataset (avoids 1 minute startup cost of fetching data from database, useful for quick tests).",
+)
+parser.add_argument(
+    "--use-fwd",
+    type=eval,
+    choices=[True, False],
+    default=True,
+    help="Whether to use a forward model at all",
+)
+parser.add_argument(
+    "--load-checkpoint",
+    type=eval,
+    choices=[True, False],
+    default=False,
+    help="Load trained model. Useful for validation. Requires model to already be trained and saved.",
+)
 args = parser.parse_args()
 
 
@@ -89,21 +132,25 @@ backward_trainer = pl.Trainer(
     log_every_n_steps=30,
 )
 
+# TODO: load checkpoint for both forward and back
 if args.use_fwd:
-    forward_model = ForwardModel()
+    forward_model = None if args.load_checkpoint else ForwardModel()
     forward_data_module = ForwardDataModule(
         batch_size=args.forward_batch_size,
         use_cache=args.use_cache,
     )
-    forward_trainer.fit(forward_model, datamodule=forward_data_module)
-    forward_trainer.test(forward_model, datamodule=forward_data_module)
+    if not args.load_checkpoint:
+        forward_trainer.fit(model=forward_model, datamodule=forward_data_module)
+
+    forward_trainer.test(model=forward_model, datamodule=forward_data_module)
     backward_model = BackwardModel(forward_model=forward_model)
 else:
-    backward_model = BackwardModel(forward_model=None)
+    backward_model = None if args.load_checkpoint else BackwardModel(forward_model=None)
 
 backward_data_module = BackwardDataModule(
     batch_size=args.backward_batch_size,
     use_cache=args.use_cache,
 )
-backward_trainer.fit(backward_model, datamodule=backward_data_module)
-backward_trainer.test(backward_model, datamodule=backward_data_module)
+if not args.load_checkpoint:
+    backward_trainer.fit(model=backward_model, datamodule=backward_data_module)
+backward_trainer.test(model=backward_model, datamodule=backward_data_module)
