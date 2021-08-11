@@ -113,12 +113,12 @@ class BackwardModel(pl.LightningModule):
 
         x_pred = self(y)
         with torch.no_grad():
-            x_loss = rmse(x_pred, x)
+            x_loss = F.huber_loss(x_pred, x)
         loss = x_loss
         self.log("backward/train/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
-            y_loss = rmse(y_pred, y)
+            y_loss = F.huber_loss(y_pred, y)
 
             self.log(
                 "backward/train/y/loss",
@@ -135,12 +135,12 @@ class BackwardModel(pl.LightningModule):
 
         x_pred = self(y)
         with torch.no_grad():
-            x_loss = rmse(x_pred, x)
+            x_loss = F.huber_loss(x_pred, x)
         loss = x_loss
         self.log("backward/val/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
-            y_loss = rmse(y_pred, y)
+            y_loss = F.huber_loss(y_pred, y)
             self.log(
                 "backward/val/y/loss",
                 y_loss,
@@ -156,12 +156,12 @@ class BackwardModel(pl.LightningModule):
 
         x_pred = self(y)
         with torch.no_grad():
-            x_loss = rmse(x_pred, x)
+            x_loss = F.huber_loss(x_pred, x)
         loss = x_loss
         self.log("backward/test/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
-            y_loss = rmse(y_pred, y)
+            y_loss = F.huber_loss(y_pred, y)
             self.log(
                 "backward/test/y/loss",
                 y_loss,
