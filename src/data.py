@@ -98,8 +98,8 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
 
         print(f"{len(laser_params)=}")
         print(f"{len(emissivity)=}")
-        print(f"{laser_params.min()=}")
-        print(f"{laser_params.max()=}")
+        print(f"{laser_params.min(0)=}")
+        print(f"{laser_params.max(0)=}")
         print(f"{emissivity.min()=}")
         print(f"{emissivity.max()=}")
 
