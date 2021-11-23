@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 from typing import List, Tuple
 
+import pandas as pd
 import pymongo
 import sklearn
 import torch
@@ -56,7 +59,6 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
         # TODO: relax this to all wattages, try discretizing them w/
         # softmax instead
         for entry in tqdm(db.find()):
-            # XXX: chop off the top emissivity since it's always 1 and I think that's a bug. The `[1:]` does that
             # TODO: ensure that this is sorted by wavelength
             # TODO log transform?
             emiss_plot: List[float] = [
@@ -109,3 +111,47 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
         torch.save(emissivity, Path("emissivity.pt"))
 
     return laser_params, emissivity
+
+
+def parse_entry(filename: os.PathLike) -> None:
+    pattern = re.compile("Power_(\d)_(\d)_W_Speed_(\d+)_mm_s_Spacing_(\d+)_um.txt")
+    m = pattern.match(filename.name)
+    if m is None:
+        return
+    power1, power2, x_speed, y_spacing = m[1], m[2], m[3], m[4]
+    x_speed = float(x_speed)
+    y_spacing = float(y_spacing)
+    power = int(power1) + int(power2) * 10 ** -1
+    data = pd.read_csv(
+        filename, header=None, names=["wavelens", "emisses"], delim_whitespace=True
+    )
+    wavelens = data.wavelens
+    emisses = data.emisses
+    # emissivity_averaged_over_wavelength = ...
+    entry = {
+        "laser_repetition_rate_kHz": 100,
+        "laser_wavelength_nm": 1030,
+        "laser_polarization": "p-pol",
+        "laser_steering_equipment": "Galvano scanner",
+        "laser_hardware_model": "s-Pulse (Amplitude)",
+        "substrate_details": "SS foil with 0.5 mm thickness (GF90624180-20EA)",
+        "laser_power_W": power,
+        "laser_scanning_speed_x_dir_mm_per_s": x_speed,
+        "laser_scanning_line_spacing_y_dir_micron": y_spacing,
+        "substrate_material": "stainless_steel",
+        "emissivity_spectrum": [
+            {"wavelength_micron": w, "normal_emissivity": e}
+            for w, e in zip(wavelens, emisses)
+        ],
+        "emissivity_averaged_over_frequency": sum(emisses) / len(emisses),
+    }
+    client = pymongo.MongoClient(
+        "mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt"
+    )
+    db = client.propopt.laser_samples2
+    db.insert(entry)
+
+
+def parse_all():
+    for p in Path("/home/alok/minok_ml_data").rglob("*.txt"):
+        parse_entry(p)
