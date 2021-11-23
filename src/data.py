@@ -32,7 +32,7 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
         client = pymongo.MongoClient(
             "mongodb://propopt_ro:2vsz634dwrwwsq@mongodb07.nersc.gov/propopt"
         )
-        db = client.propopt.laser_samples
+        db = client.propopt.laser_samples2
         laser_params, emissivity = [], []
         wattages = []
         # TODO: clean up and generalize when needed
@@ -79,12 +79,11 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
                 entry["laser_scanning_line_spacing_y_dir_micron"],
                 # TODO these should be computed by the model doing actual averaging, not direct prediction
                 entry["emissivity_averaged_over_frequency"],
-                entry["emissivity_averaged_over_wavelength"],
                 # XXX laser_rep_rate and wavelength_nm are all the same
                 # float(entry["laser_repetition_rate_kHz"]),
                 # float(entry["laser_wavelength_nm"]),
                 *F.one_hot(
-                    torch.tensor(wattage_idxs[entry["laser_power_W"]]),
+                    torch.tensor(round(wattage_idxs[entry["laser_power_W"]]), 1),
                     num_classes=len(wattage_idxs),
                 ),
             ]
