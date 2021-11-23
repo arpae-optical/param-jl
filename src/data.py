@@ -83,7 +83,7 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
                 # float(entry["laser_repetition_rate_kHz"]),
                 # float(entry["laser_wavelength_nm"]),
                 *F.one_hot(
-                    torch.tensor(round(wattage_idxs[entry["laser_power_W"]]), 1),
+                    torch.tensor(round(wattage_idxs[entry["laser_power_W"]], 1)),
                     num_classes=len(wattage_idxs),
                 ),
             ]
