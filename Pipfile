@@ -15,6 +15,7 @@ torchmetrics = "*"
 rich = "*"
 wandb = "*"
 test-tube = "*"
+sklearn = "*"
 
 [dev-packages]
 

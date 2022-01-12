@@ -9,8 +9,8 @@ import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TestTubeLogger, WandbLogger
 
-from backwards import BackwardDataModule, BackwardModel
-from forwards import ForwardDataModule, ForwardModel
+from backwardstwelve import BackwardDataModule, BackwardModel
+from forwardstwelve import ForwardDataModule, ForwardModel
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -64,6 +64,19 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+fwd_checkpoint_cb = ModelCheckpoint(
+    monitor="forward/train/loss",
+    dirpath="weights/forward",
+    save_top_k=1,
+    mode="min",
+)
+
+backward_checkpoint_cb = ModelCheckpoint(
+    monitor="backward/train/loss",
+    dirpath="weights/backward",
+    save_top_k=1,
+    mode="min",
+)
 
 forward_trainer = pl.Trainer(
     max_epochs=args.forward_num_epochs,
@@ -80,12 +93,7 @@ forward_trainer = pl.Trainer(
         ),
     ],
     callbacks=[
-        ModelCheckpoint(
-            monitor="forward/train/loss",
-            dirpath="weights/forward",
-            save_top_k=1,
-            mode="min",
-        ),
+        fwd_checkpoint_cb,
     ],
     gpus=torch.cuda.device_count(),
     precision=32,
@@ -95,7 +103,7 @@ forward_trainer = pl.Trainer(
     progress_bar_refresh_rate=100,
     check_val_every_n_epoch=10,
     gradient_clip_val=0.5,
-    log_every_n_steps=10,
+    log_every_n_steps=min(10, args.forward_num_epochs),
 )
 
 
@@ -114,12 +122,7 @@ backward_trainer = pl.Trainer(
         ),
     ],
     callbacks=[
-        ModelCheckpoint(
-            monitor="backward/train/loss",
-            dirpath="weights/backward",
-            save_top_k=1,
-            mode="min",
-        ),
+        backward_checkpoint_cb,
     ],
     gpus=torch.cuda.device_count(),
     precision=32,
@@ -141,10 +144,10 @@ if args.use_fwd:
     )
     if not args.load_checkpoint:
         forward_trainer.fit(model=forward_model, datamodule=forward_data_module)
-
+    print(f"{fwd_checkpoint_cb.best_model_path=}")
     forward_trainer.test(
         model=forward_model,
-        ckpt_path="best",
+        ckpt_path=fwd_checkpoint_cb.best_model_path,
         datamodule=forward_data_module,
     )
     backward_model = BackwardModel(forward_model=forward_model)
@@ -157,8 +160,9 @@ backward_data_module = BackwardDataModule(
 )
 if not args.load_checkpoint:
     backward_trainer.fit(model=backward_model, datamodule=backward_data_module)
+print(f"{backward_checkpoint_cb.best_model_path=}")
 backward_trainer.test(
     model=backward_model,
-    ckpt_path="best",
+    ckpt_path=backward_checkpoint_cb.best_model_path,
     datamodule=backward_data_module,
 )

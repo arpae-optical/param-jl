@@ -89,10 +89,10 @@ class BackwardModel(pl.LightningModule):
             nn.Flatten(),
             # for the normalized laser params
         )
-        self.continuous_head = nn.LazyLinear(4)
-        self.discrete_head = nn.LazyLinear(16 - 4)
+        self.continuous_head = nn.LazyLinear(3)
+        self.discrete_head = nn.LazyLinear(15 - 3)
         # XXX this call *must* happen to initialize the lazy layers
-        _x = self.backward_model(torch.empty(3, 934, 1))
+        _x = self.backward_model(torch.empty(3, 935 - 1, 1))
         self.continuous_head(_x)
         self.discrete_head(_x)
 
@@ -102,7 +102,7 @@ class BackwardModel(pl.LightningModule):
         b = self.backward_model(x)
         laser_params = torch.sigmoid(self.continuous_head(b))
         wattages = F.one_hot(
-            torch.argmax(self.discrete_head(b), dim=-1), num_classes=16 - 4
+            torch.argmax(self.discrete_head(b), dim=-1), num_classes=15 - 3
         )
 
         return torch.cat((laser_params, wattages), dim=-1)
@@ -168,6 +168,11 @@ class BackwardModel(pl.LightningModule):
                 prog_bar=True,
             )
             loss = y_loss
+
+            torch.save(x, "params_true_back.pt")
+            torch.save(y, "emiss_true_back.pt")
+            torch.save(y_pred, "emiss_pred.pt")
+            torch.save(x_pred, "param_pred.pt")
         self.log(f"backward/test/loss", loss, prog_bar=True)
         return loss
 

@@ -23,17 +23,20 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
             use_cache,
             Path("emissivity.pt").exists(),
             Path("laser_params.pt").exists(),
+            Path("wavelength.pt").exists(),
         ]
     ):
-        laser_params, emissivity = torch.load(Path("laser_params.pt")), torch.load(
-            Path("emissivity.pt")
+        laser_params, emissivity, wavelength = (
+            torch.load(Path("laser_params.pt")),
+            torch.load(Path("emissivity.pt")),
+            torch.load(Path("wavelength.pt")),
         )
     else:
         client = pymongo.MongoClient(
             "mongodb://propopt_ro:2vsz634dwrwwsq@mongodb07.nersc.gov/propopt"
         )
         db = client.propopt.laser_samples2
-        laser_params, emissivity = [], []
+        laser_params, emissivity, wavelength = [], [], []
         wattages = []
         # TODO: clean up and generalize when needed
         # the values are indexes for one hot vectorization
@@ -66,6 +69,11 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
                 for ex in entry["emissivity_spectrum"]
                 if (e := ex["normal_emissivity"]) != 1.0
             ]
+            wavelength_plot: List[float] = [
+                ex["wavelength_micron"]
+                for ex in entry["emissivity_spectrum"]
+                if ex["normal_emissivity"] != 1.0
+            ]
             # drop all problematic emissivity (only 3% of data dropped)
             # XXX The `935 - 1` is to account for the chopping off above.
             if len(emiss_plot) != (935 - 1) or any(
@@ -83,19 +91,23 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
                 # float(entry["laser_repetition_rate_kHz"]),
                 # float(entry["laser_wavelength_nm"]),
                 *F.one_hot(
-                    torch.tensor(round(wattage_idxs[entry["laser_power_W"]], 1)),
+                    torch.tensor(wattage_idxs[round(entry["laser_power_W"], 1)]),
                     num_classes=len(wattage_idxs),
                 ),
             ]
             laser_params.append(params)
             emissivity.append(emiss_plot)
+            wavelength.append(wavelength_plot)
 
         # normalize laser parameters
         laser_params = torch.FloatTensor(laser_params)
         emissivity = torch.FloatTensor(emissivity)
+        wavelength = torch.FloatTensor(wavelength)
 
         # break any correlations in data
-        laser_params, emissivity = sklearn.utils.shuffle(laser_params, emissivity)
+        laser_params, emissivity, wavelength = sklearn.utils.shuffle(
+            laser_params, emissivity, wavelength
+        )
 
         print(f"{len(laser_params)=}")
         print(f"{len(emissivity)=}")
@@ -108,6 +120,7 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
 
         torch.save(laser_params, Path("laser_params.pt"))
         torch.save(emissivity, Path("emissivity.pt"))
+        torch.save(wavelength, Path("wavelength.pt"))
 
     return laser_params, emissivity
 
