@@ -28,7 +28,7 @@ class ForwardDataModule(pl.LightningDataModule):
         input, output = data.get_data(self.use_cache)
         splits = split(len(input))
         
-        output = output[:, 115:930]
+        output = output[:, 115:935]
         self.train = TensorDataset(
             input[splits["train"].start : splits["train"].stop],
             output[splits["train"].start : splits["train"].stop],

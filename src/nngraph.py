@@ -33,8 +33,11 @@ wavelength = torch.load(Path("wavelength.pt"))
 real_laser, predicted_laser = torch.load(Path("params_true_back.pt")), torch.load(Path("param_pred.pt"))
 real_emissivity, predicted_emissivity = torch.load(Path("emiss_true_back.pt")), torch.load(Path("emiss_pred.pt"))
 
+
 #spliting the data
 splits = split(len(real_laser))
+
+print(len()
 train_real_laser = real_laser[splits["train"].start : splits["train"].stop]
 val_real_laser = real_laser[splits["val"].start : splits["val"].stop]
 test_real_laser = real_laser[splits["test"].start : splits["test"].stop]
@@ -154,7 +157,7 @@ val = np.stack(val)
 #get random indexes and the corresponding indexes of the nearest neighbors
 n = []
 #m = []
-for i in range(20):
+for i in range(23):
     n.append(i)
     #m.append(neigh.kneighbors(X=val_hat.T[n[i]].reshape(1, -1), n_neighbors=1, return_distance=False))
 
@@ -170,7 +173,7 @@ fig = plt.figure(figsize = (100,100))
 
 #graph the laser params
 fig = plt.figure(figsize = (100,100))
-for i in range(20):
+for i in range(23):
     ax = fig.add_subplot(14, 14, i+1, projection = '3d')
     #sort by watt, then speed, then spacing
     print("watt")
@@ -212,7 +215,7 @@ plt.show()
 fig = plt.figure(figsize = (100,100))
 
 
-for i in range(20):
+for i in range(23):
     watt = val[0][n[i]]
     speed = unnormalize(val[1][n[i]], min = 10, max = 700)
     spacing = unnormalize(val[2][n[i]], min = 1, max = 42)
@@ -240,8 +243,8 @@ for i in range(20):
     #     manufactured_emiss_list.append(float(line[17:32]))
     ax = fig.add_subplot(14, 14, i+1)
     
-    ax.scatter(wavelength[0][0:115], val_real_emissivity.detach()[n[i]].cpu(), s =10, c= 'black', label = 'Expected')
-    ax.scatter(wavelength[0][0:115], val_predicted_emissivity.detach()[n[i]].cpu(), s =10, c = 'r', label = 'Predicted')
+    ax.scatter(wavelength[0][115:935], val_real_emissivity.detach()[n[i]].cpu(), s =10, c= 'black', label = 'Expected')
+    ax.scatter(wavelength[0][115:935], val_predicted_emissivity.detach()[n[i]].cpu(), s =10, c = 'r', label = 'Predicted')
     
     
     ax.set_title(f'Index = {n[i]}', fontsize = 60)

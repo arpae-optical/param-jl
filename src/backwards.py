@@ -76,7 +76,28 @@ class BackwardModel(pl.LightningModule):
         else:
             self.forward_model = forward_model
             self.forward_model.freeze()
-        self.backward_model = nn.Sequential(
+
+        self.encoder=nn.Sequential(
+            nn.LazyConv1d(2 ** 11, kernel_size=1),
+            nn.GELU(),
+            nn.Dropout(0.5),
+            nn.LazyConv1d(2 ** 12, kernel_size=1),
+            nn.GELU(),
+            nn.Dropout(0.5),
+            nn.LazyConv1d(2 ** 13, kernel_size=1),
+            nn.GELU(),
+            nn.Dropout(0.5),
+
+
+        )
+
+        Z = 1024
+        self.mean_head = Linear(71 * 512, Z)
+        self.log_var_head = Sequential(
+            Linear(71 * 512, Z),
+        )
+
+        self.decoder = nn.Sequential(
             nn.LazyConv1d(2 ** 11, kernel_size=1),
             nn.GELU(),
             nn.Dropout(0.5),
@@ -92,17 +113,32 @@ class BackwardModel(pl.LightningModule):
         self.continuous_head = nn.LazyLinear(3)
         self.discrete_head = nn.LazyLinear(15 - 3)
         # XXX this call *must* happen to initialize the lazy layers
+        # TODO fix
         _x = self.backward_model(torch.empty(3, 935 - 1, 1))
         self.continuous_head(_x)
         self.discrete_head(_x)
 
+        # TODO fix shapes
     def forward(self, x):
         if x.ndim == 2:
             x = x.unsqueeze(-1)
-        b = self.backward_model(x)
-        laser_params = torch.sigmoid(self.continuous_head(b))
+        h=self.encoder(x)
+        mean, log_var = self.mean_head(h), self.log_var_head(h)
+
+        std = (log_var / 2).exp()
+
+        dist = Normal(
+            loc=mean,
+            scale=std
+            * (args.reparam_train_eps if stage == "train" else args.reparam_val_eps),
+        )
+        zs = dist.rsample()
+
+        decoded = self.decoder(zs)
+
+        laser_params = torch.sigmoid(self.continuous_head(decoded))
         wattages = F.one_hot(
-            torch.argmax(self.discrete_head(b), dim=-1), num_classes=15 - 3
+            torch.argmax(self.discrete_head(decoded), dim=-1), num_classes=15 - 3
         )
 
         return torch.cat((laser_params, wattages), dim=-1)

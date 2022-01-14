@@ -24,7 +24,7 @@ class BackwardDataModule(pl.LightningDataModule):
     def setup(self, stage: Optional[str]) -> None:
 
         output, input = data.get_data(self.use_cache)
-        input = input[:, 115:930]
+        input = input[:, 115:935]
         splits = split(len(input))
         self.train = TensorDataset(
             input[splits["train"].start : splits["train"].stop],
