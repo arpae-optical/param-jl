@@ -88,11 +88,6 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
             params = [
                 entry["laser_scanning_speed_x_dir_mm_per_s"],
                 entry["laser_scanning_line_spacing_y_dir_micron"],
-                # TODO these should be computed by the model doing actual averaging, not direct prediction
-                entry["emissivity_averaged_over_frequency"],
-                # XXX laser_rep_rate and wavelength_nm are all the same
-                # float(entry["laser_repetition_rate_kHz"]),
-                # float(entry["laser_wavelength_nm"]),
                 *F.one_hot(
                     torch.tensor(wattage_idxs[round(entry["laser_power_W"], 1)]),
                     num_classes=len(wattage_idxs),
