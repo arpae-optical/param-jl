@@ -1,5 +1,6 @@
 from pathlib import Path
 import torch
+import math
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Dict, Literal, Mapping, Optional
@@ -37,7 +38,6 @@ real_emissivity, predicted_emissivity = torch.load(Path("emiss_true_back.pt")), 
 #spliting the data
 splits = split(len(real_laser))
 
-print(len()
 train_real_laser = real_laser[splits["train"].start : splits["train"].stop]
 val_real_laser = real_laser[splits["val"].start : splits["val"].stop]
 test_real_laser = real_laser[splits["test"].start : splits["test"].stop]
@@ -114,9 +114,11 @@ val_hat.append(val_hat_ef)
 val_hat.append(val_hat_ew)
 val_hat = np.array(val_hat)
 watt_size = np.size(val_hat_watt)
+print(watt_size)
 for i in range(len(val_hat)):
-    val_hat[i] = [np.float(entry) for entry in val_hat[i][0:watt_size][0]]
+    val_hat[i] = [np.float(entry) for entry in val_hat[i][0:watt_size]]
 val_hat = np.stack(val_hat)
+
 
 #the real data from the validation set
 val_watt1 = val_real_laser.T[4:].T.cpu()
@@ -144,10 +146,14 @@ val.append(val_spacing)
 val.append(val_ef)
 val.append(val_ew)
 val = np.array(val)
+
+
 watt_size = np.size(val_watt)
+print(watt_size)
 for i in range(len(val)):
     val[i] = [np.float(entry) for entry in val[i][0:watt_size]]
 val = np.stack(val)
+
 
 
 #make and fit the nearest neighbors
@@ -164,17 +170,20 @@ for i in range(23):
 def unnormalize(normed, min, max):
     return normed*(max-min)+min
 
+
+sqrt_data_size = math.ceil((len(real_laser)/10)**0.5)
+
+
 plt.suptitle('Predicted vs Expected vs Manufactured Laser Params: Random Validation', fontsize = 100)
 plt.tight_layout(pad = 10)
-plt.subplots_adjust(top=0.95)
+plt.subplots_adjust(top=(1-0.5/sqrt_data_size))
 plt.show()
-fig = plt.figure(figsize = (100,100))
 
 
 #graph the laser params
-fig = plt.figure(figsize = (100,100))
-for i in range(23):
-    ax = fig.add_subplot(14, 14, i+1, projection = '3d')
+fig = plt.figure(figsize = (sqrt_data_size*10,sqrt_data_size*10))
+for i in range(22):
+    ax = fig.add_subplot(sqrt_data_size, sqrt_data_size, i+1, projection = '3d')
     #sort by watt, then speed, then spacing
     print("watt")
     print(val[0][n[i]])
@@ -210,12 +219,12 @@ fig.savefig('temp_scatter.png', dpi=fig.dpi)
 # graph the wavelength and emissivity
 plt.suptitle('Predicted vs Expected vs Nearest Laser Params: Random Validation', fontsize = 100)
 plt.tight_layout(pad = 10)
-plt.subplots_adjust(top=0.95)
+plt.subplots_adjust(top=(1-0.5/sqrt_data_size))
 plt.show()
-fig = plt.figure(figsize = (100,100))
+fig = plt.figure(figsize = (sqrt_data_size*10,sqrt_data_size*10))
 
 
-for i in range(23):
+for i in range(22):
     watt = val[0][n[i]]
     speed = unnormalize(val[1][n[i]], min = 10, max = 700)
     spacing = unnormalize(val[2][n[i]], min = 1, max = 42)
@@ -241,7 +250,7 @@ for i in range(23):
     # manufactured_emiss_list = []
     # for line in lines[0:934]:
     #     manufactured_emiss_list.append(float(line[17:32]))
-    ax = fig.add_subplot(14, 14, i+1)
+    ax = fig.add_subplot(sqrt_data_size, sqrt_data_size, i+1)
     
     ax.scatter(wavelength[0][115:935], val_real_emissivity.detach()[n[i]].cpu(), s =10, c= 'black', label = 'Expected')
     ax.scatter(wavelength[0][115:935], val_predicted_emissivity.detach()[n[i]].cpu(), s =10, c = 'r', label = 'Predicted')
@@ -256,9 +265,9 @@ for i in range(23):
 
     ax.tick_params(axis='both', labelsize=20)
     plt.legend(fontsize = 20, loc = 'lower left')
-plt.suptitle('Predicted vs Expected vs Manufactured Emissivity: Random Validation', fontsize = 100)                      
-plt.tight_layout(pad=10)    
-plt.subplots_adjust(top=0.95)   
+plt.suptitle('Predicted vs Expected vs Manufactured Emissivity: Random Validation', fontsize = 100)         
+plt.tight_layout(pad = 10)
+plt.subplots_adjust(top=(1-0.5/sqrt_data_size))
 fig.savefig('temp_graph.png', dpi=fig.dpi)
 
 
