@@ -67,16 +67,19 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
             emiss_plot: List[float] = [
                 e
                 for ex in entry["emissivity_spectrum"]
-                if (e := ex["normal_emissivity"]) != 1.0
+                if (
+                    (e := ex["normal_emissivity"]) != 1.0
+                    and ex["wavelength_micron"] < 12
+                )
             ]
             wavelength_plot: List[float] = [
                 ex["wavelength_micron"]
                 for ex in entry["emissivity_spectrum"]
-                if ex["normal_emissivity"] != 1.0
+                if (ex["normal_emissivity"] != 1.0 and ex["wavelength_micron"] < 12)
             ]
             # drop all problematic emissivity (only 3% of data dropped)
-            # XXX The `935 - 1` is to account for the chopping off above.
-            if len(emiss_plot) != (935 - 1) or any(
+
+            if len(emiss_plot) != (_MANUALLY_COUNTED_LENGTH := 821) or any(
                 not (0 <= x <= 1) for x in emiss_plot
             ):
                 continue
