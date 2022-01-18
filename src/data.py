@@ -119,7 +119,7 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
         print(f"{emissivity.min()=}")
         print(f"{emissivity.max()=}")
 
-        laser_params = laser_params / laser_params.max(0).values
+        laser_params /= laser_params.max(0).values
 
         torch.save(laser_params, Path("laser_params.pt"))
         torch.save(emissivity, Path("emissivity.pt"))
