@@ -9,8 +9,8 @@ import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TestTubeLogger, WandbLogger
 
-from backwardstwelve import BackwardDataModule, BackwardModel
-from forwardstwelve import ForwardDataModule, ForwardModel
+from backwards import BackwardDataModule, BackwardModel
+from forwards import ForwardDataModule, ForwardModel
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -132,7 +132,7 @@ backward_trainer = pl.Trainer(
     progress_bar_refresh_rate=10,
     check_val_every_n_epoch=10,
     gradient_clip_val=0.5,
-    log_every_n_steps=30,
+    log_every_n_steps=min(30, args.backward_num_epochs),
 )
 
 # TODO: load checkpoint for both forward and back

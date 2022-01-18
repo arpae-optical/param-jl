@@ -72,7 +72,7 @@ Mode = Literal["forward", "backward"]
 
 
 class ForwardModel(pl.LightningModule):
-    def __init__(self):
+    def __init__(self,num_wavelens=821):
         super().__init__()
         # self.save_hyperparameters()
         self.model = nn.Sequential(
@@ -89,14 +89,14 @@ class ForwardModel(pl.LightningModule):
             nn.Dropout(0.5),
             nn.LazyBatchNorm1d(),
             nn.Flatten(),
-            nn.LazyLinear(935 - 1),
+            nn.LazyLinear(821),
             nn.Sigmoid(),
         )
 
         # self.model = nn.Sequential()
         # TODO how to reverse the *data* in the Linear layers easily? transpose?
         # XXX This call *must* happen to initialize the lazy layers
-        self.model(torch.empty(3, 15, 1))
+        self.forward(torch.rand(2, 14, 1))
 
     def forward(self, x):
         # add dummy dim

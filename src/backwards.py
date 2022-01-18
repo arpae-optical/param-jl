@@ -8,6 +8,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.distributions import Normal, kl_divergence
 from torch.utils.data import DataLoader, TensorDataset
 
 import data
@@ -68,36 +69,21 @@ class BackwardDataModule(pl.LightningDataModule):
 
 
 class BackwardModel(pl.LightningModule):
-    def __init__(self, forward_model: Optional[ForwardModel] = None):
+    def __init__(
+        self,
+        forward_model: Optional[ForwardModel] = None,
+        kl_coeff: float = 1.0,
+    ) -> None:
         super().__init__()
         # self.save_hyperparameters()
+        self.kl_coeff = kl_coeff
         if forward_model is None:
             self.forward_model = None
         else:
             self.forward_model = forward_model
             self.forward_model.freeze()
 
-        self.encoder=nn.Sequential(
-            nn.LazyConv1d(2 ** 11, kernel_size=1),
-            nn.GELU(),
-            nn.Dropout(0.5),
-            nn.LazyConv1d(2 ** 12, kernel_size=1),
-            nn.GELU(),
-            nn.Dropout(0.5),
-            nn.LazyConv1d(2 ** 13, kernel_size=1),
-            nn.GELU(),
-            nn.Dropout(0.5),
-
-
-        )
-
-        Z = 1024
-        self.mean_head = Linear(71 * 512, Z)
-        self.log_var_head = Sequential(
-            Linear(71 * 512, Z),
-        )
-
-        self.decoder = nn.Sequential(
+        self.encoder = nn.Sequential(
             nn.LazyConv1d(2 ** 11, kernel_size=1),
             nn.GELU(),
             nn.Dropout(0.5),
@@ -108,60 +94,86 @@ class BackwardModel(pl.LightningModule):
             nn.GELU(),
             nn.Dropout(0.5),
             nn.Flatten(),
-            # for the normalized laser params
         )
-        self.continuous_head = nn.LazyLinear(3)
-        self.discrete_head = nn.LazyLinear(15 - 3)
+
+        Z = 1024
+        self.mean_head = nn.LazyLinear(Z)
+        self.log_var_head = nn.LazyLinear(Z)
+
+        self.decoder = nn.Sequential(
+            nn.LazyLinear(512),
+            nn.GELU(),
+            nn.LazyLinear(256),
+        )
+        self.continuous_head = nn.LazyLinear(2)
+        self.discrete_head = nn.LazyLinear(12)
         # XXX this call *must* happen to initialize the lazy layers
         # TODO fix
-        _x = self.backward_model(torch.empty(3, 935 - 1, 1))
-        self.continuous_head(_x)
-        self.discrete_head(_x)
+        _dummy_input = torch.rand(2, 821, 1)
+        self.forward(_dummy_input)
 
-        # TODO fix shapes
-    def forward(self, x):
+    def forward(self, x, mode: Stage = "train"):
         if x.ndim == 2:
             x = x.unsqueeze(-1)
-        h=self.encoder(x)
+
+        h = self.encoder(x)
         mean, log_var = self.mean_head(h), self.log_var_head(h)
 
         std = (log_var / 2).exp()
 
-        dist = Normal(
-            loc=mean,
-            scale=std
-            * (args.reparam_train_eps if stage == "train" else args.reparam_val_eps),
-        )
+        dist = Normal(loc=mean, scale=std)
+        # zs = dist.rsample([100]).flatten(0,1)
         zs = dist.rsample()
 
         decoded = self.decoder(zs)
 
         laser_params = torch.sigmoid(self.continuous_head(decoded))
         wattages = F.one_hot(
-            torch.argmax(self.discrete_head(decoded), dim=-1), num_classes=15 - 3
+            torch.argmax(self.discrete_head(decoded), dim=-1), num_classes=12
         )
+        # print(f'{laser_params.shape=}')
+        # print(f'{wattages.shape=}')
 
-        return torch.cat((laser_params, wattages), dim=-1)
+        return {
+            "params": torch.cat((laser_params, wattages), dim=-1),
+            "dist": dist,
+        }
 
     def training_step(self, batch, batch_nb):
         # TODO: plot
         y, x = (emiss, laser_params) = batch
 
         x_pred = self(y)
-        with torch.no_grad():
+        x_pred, dist = x_pred["params"], x_pred["dist"]
+        if self.forward_model is None:
+            with torch.no_grad():
+                x_loss = F.huber_loss(x_pred, x)
+        else:
             x_loss = F.huber_loss(x_pred, x)
         loss = x_loss
         self.log("backward/train/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = F.huber_loss(y_pred, y)
+            kl_loss = (
+                self.kl_coeff
+                * kl_divergence(
+                    dist,
+                    Normal(torch.zeros_like(dist.mean), torch.ones_like(dist.variance)),
+                ).mean()
+            )
+            self.log(
+                "backward/train/kl/loss",
+                kl_loss,
+                prog_bar=True,
+            )
 
             self.log(
                 "backward/train/y/loss",
                 y_loss,
                 prog_bar=True,
             )
-            loss = y_loss
+            loss = y_loss + kl_loss
         self.log(f"backward/train/loss", loss, prog_bar=True)
         return loss
 
@@ -170,19 +182,37 @@ class BackwardModel(pl.LightningModule):
         y, x = (emiss, laser_params) = batch
 
         x_pred = self(y)
-        with torch.no_grad():
+        x_pred, dist = x_pred["params"], x_pred["dist"]
+        if self.forward_model is None:
+            with torch.no_grad():
+                x_loss = F.huber_loss(x_pred, x)
+        else:
             x_loss = F.huber_loss(x_pred, x)
         loss = x_loss
         self.log("backward/val/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = F.huber_loss(y_pred, y)
+
+            kl_loss = (
+                self.kl_coeff
+                * kl_divergence(
+                    dist,
+                    Normal(torch.zeros_like(dist.mean), torch.ones_like(dist.variance)),
+                ).mean()
+            )
+            self.log(
+                "backward/train/kl/loss",
+                kl_loss,
+                prog_bar=True,
+            )
+
             self.log(
                 "backward/val/y/loss",
                 y_loss,
                 prog_bar=True,
             )
-            loss = y_loss
+            loss = y_loss + kl_loss
         self.log(f"backward/val/loss", loss, prog_bar=True)
         return loss
 
@@ -191,19 +221,36 @@ class BackwardModel(pl.LightningModule):
         y, x = (emiss, laser_params) = batch
 
         x_pred = self(y)
-        with torch.no_grad():
+        x_pred, dist = x_pred["params"], x_pred["dist"]
+        if self.forward_model is None:
+            with torch.no_grad():
+                x_loss = F.huber_loss(x_pred, x)
+        else:
             x_loss = F.huber_loss(x_pred, x)
         loss = x_loss
         self.log("backward/test/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = F.huber_loss(y_pred, y)
+            kl_loss = (
+                self.kl_coeff
+                * kl_divergence(
+                    dist,
+                    Normal(torch.zeros_like(dist.mean), torch.ones_like(dist.variance)),
+                ).mean()
+            )
+            self.log(
+                "backward/train/kl/loss",
+                kl_loss,
+                prog_bar=True,
+            )
+
             self.log(
                 "backward/test/y/loss",
                 y_loss,
                 prog_bar=True,
             )
-            loss = y_loss
+            loss = y_loss + kl_loss
 
             torch.save(x, "params_true_back.pt")
             torch.save(y, "emiss_true_back.pt")
