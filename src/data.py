@@ -5,19 +5,24 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import pandas as pd
 import pymongo
+import pytorch_lightning as pl
 import sklearn
 import torch
 import torch.nn.functional as F
+from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
+import utils
+from utils import Stage, rmse, split
 LaserParams, Emiss = torch.FloatTensor, torch.FloatTensor
 
 
 def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
+    """Data is sorted in ascending order of wavelength."""
     if all(
         [
             use_cache,
@@ -77,6 +82,9 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
                 for ex in entry["emissivity_spectrum"]
                 if (ex["normal_emissivity"] != 1.0 and ex["wavelength_micron"] < 12)
             ]
+            # Reverse to sort in ascending rather than descending order.
+            emiss_plot.reverse()
+            wavelength_plot.reverse()
             # drop all problematic emissivity (only 3% of data dropped)
 
             if len(emiss_plot) != (_MANUALLY_COUNTED_LENGTH := 821) or any(
@@ -113,6 +121,11 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
         print(f"{laser_params.max(0)=}")
         print(f"{emissivity.min()=}")
         print(f"{emissivity.max()=}")
+
+        # Save unnormalized data for convenience later.
+        torch.save(laser_params, Path("unnorm_laser_params.pt"))
+        torch.save(emissivity, Path("unnorm_emissivity.pt"))
+        torch.save(wavelength, Path("unnorm_wavelength.pt"))
 
         laser_params /= laser_params.max(0).values
 
