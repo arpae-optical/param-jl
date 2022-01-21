@@ -41,6 +41,6 @@ def step_tensor():
     # index at 0 because each row has the same info.
     wavelens = torch.load(Path("wavelength.pt"))[0]
     out = torch.zeros(len(wavelens), len(wavelens))
-    for r, row in enumerate(out):
+    for r, _ in enumerate(out):
         out[r, : r + 1] = 1.0
     return out
