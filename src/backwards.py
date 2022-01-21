@@ -122,7 +122,6 @@ class BackwardModel(pl.LightningModule):
         std = (log_var / 2).exp()
 
         dist = Normal(loc=mean, scale=std)
-        # zs = dist.rsample([100]).flatten(0,1)
         zs = dist.rsample()
 
         decoded = self.decoder(zs)
@@ -131,8 +130,6 @@ class BackwardModel(pl.LightningModule):
         wattages = F.one_hot(
             torch.argmax(self.discrete_head(decoded), dim=-1), num_classes=12
         )
-        # print(f'{laser_params.shape=}')
-        # print(f'{wattages.shape=}')
 
         return {
             "params": torch.cat((laser_params, wattages), dim=-1),
