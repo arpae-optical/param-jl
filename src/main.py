@@ -9,8 +9,9 @@ import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TestTubeLogger, WandbLogger
 
-from backwards import BackwardDataModule, BackwardModel
-from forwards import ForwardDataModule, ForwardModel
+from backwards import BackwardModel
+from data import BackwardDataModule, ForwardDataModule, StepTestDataModule
+from forwards import ForwardModel
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -135,13 +136,19 @@ backward_trainer = pl.Trainer(
     log_every_n_steps=min(30, args.backward_num_epochs),
 )
 
+forward_data_module = ForwardDataModule(
+    batch_size=args.forward_batch_size,
+    use_cache=args.use_cache,
+)
+backward_data_module = BackwardDataModule(
+    batch_size=args.backward_batch_size,
+    use_cache=args.use_cache,
+)
+step_data_module = StepTestDataModule()
+
 # TODO: load checkpoint for both forward and back
 if args.use_fwd:
     forward_model = ForwardModel()
-    forward_data_module = ForwardDataModule(
-        batch_size=args.forward_batch_size,
-        use_cache=args.use_cache,
-    )
     if not args.load_checkpoint:
         forward_trainer.fit(model=forward_model, datamodule=forward_data_module)
     print(f"{fwd_checkpoint_cb.best_model_path=}")
@@ -154,10 +161,6 @@ if args.use_fwd:
 else:
     backward_model = BackwardModel(forward_model=None)
 
-backward_data_module = BackwardDataModule(
-    batch_size=args.backward_batch_size,
-    use_cache=args.use_cache,
-)
 if not args.load_checkpoint:
     backward_trainer.fit(model=backward_model, datamodule=backward_data_module)
 print(f"{backward_checkpoint_cb.best_model_path=}")
@@ -165,4 +168,9 @@ backward_trainer.test(
     model=backward_model,
     ckpt_path=backward_checkpoint_cb.best_model_path,
     datamodule=backward_data_module,
+)
+backward_trainer.test(
+    model=backward_model,
+    ckpt_path=backward_checkpoint_cb.best_model_path,
+    datamodule=step_data_module,
 )

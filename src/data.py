@@ -18,6 +18,7 @@ from tqdm import tqdm
 
 import utils
 from utils import Stage, rmse, split
+
 LaserParams, Emiss = torch.FloatTensor, torch.FloatTensor
 
 
@@ -134,6 +135,148 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
         torch.save(wavelength, Path("wavelength.pt"))
 
     return laser_params, emissivity
+
+
+class ForwardDataModule(pl.LightningDataModule):
+    def __init__(
+        self,
+        batch_size: int,
+        use_cache: bool = True,
+    ) -> None:
+        super().__init__()
+        self.batch_size = batch_size
+        self.use_cache = use_cache
+
+    def setup(self, stage: Optional[str]) -> None:
+
+        input, output = data.get_data(self.use_cache)
+        splits = split(len(input))
+        self.train = TensorDataset(
+            input[splits["train"].start : splits["train"].stop],
+            output[splits["train"].start : splits["train"].stop],
+        )
+        self.val = TensorDataset(
+            input[splits["val"].start : splits["val"].stop],
+            output[splits["val"].start : splits["val"].stop],
+        )
+        self.test = TensorDataset(
+            input[splits["test"].start : splits["test"].stop],
+            output[splits["test"].start : splits["test"].stop],
+        )
+
+    def train_dataloader(self):
+        return DataLoader(
+            dataset=self.train,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=16,
+            pin_memory=True,
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            dataset=self.val,
+            batch_size=self.batch_size,
+            shuffle=False,
+            pin_memory=True,
+            num_workers=16,
+        )
+
+    def test_dataloader(self):
+        return DataLoader(
+            dataset=self.test,
+            batch_size=self.batch_size,
+            shuffle=False,
+            pin_memory=True,
+            num_workers=16,
+        )
+
+
+class BackwardDataModule(pl.LightningDataModule):
+    def __init__(self, batch_size: int, use_cache: bool = True) -> None:
+        super().__init__()
+        self.batch_size = batch_size
+        self.use_cache = use_cache
+
+    def setup(self, stage: Optional[str]) -> None:
+
+        output, input = data.get_data(self.use_cache)
+
+        splits = split(len(input))
+        self.train = TensorDataset(
+            input[splits["train"].start : splits["train"].stop],
+            output[splits["train"].start : splits["train"].stop],
+        )
+        self.val = TensorDataset(
+            input[splits["val"].start : splits["val"].stop],
+            output[splits["val"].start : splits["val"].stop],
+        )
+        self.test = TensorDataset(
+            input[splits["test"].start : splits["test"].stop],
+            output[splits["test"].start : splits["test"].stop],
+        )
+
+    def train_dataloader(self):
+        return DataLoader(
+            dataset=self.train,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=16,
+            pin_memory=True,
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            dataset=self.val,
+            batch_size=self.batch_size,
+            shuffle=False,
+            pin_memory=True,
+            num_workers=16,
+        )
+
+    def test_dataloader(self):
+        return DataLoader(
+            dataset=self.test,
+            batch_size=self.batch_size,
+            shuffle=False,
+            pin_memory=True,
+            num_workers=16,
+        )
+
+
+class StepTestDataModule(pl.LightningDataModule):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def setup(self, stage: Optional[str]) -> None:
+        self.test = TensorDataset(utils.step_tensor())
+
+    def train_dataloader(self):
+        return DataLoader(
+            dataset=self.test,
+            batch_size=1_000,
+            shuffle=False,
+            num_workers=16,
+            pin_memory=True,
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            dataset=self.test,
+            batch_size=1_000,
+            shuffle=False,
+            num_workers=16,
+            pin_memory=True,
+        )
+
+    def test_dataloader(self):
+        return DataLoader(
+            dataset=self.test,
+            batch_size=1_000,
+            shuffle=False,
+            num_workers=16,
+            pin_memory=True,
+        )
 
 
 def parse_entry(filename: os.PathLike) -> None:
