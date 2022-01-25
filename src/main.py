@@ -169,8 +169,10 @@ backward_trainer.test(
     ckpt_path=backward_checkpoint_cb.best_model_path,
     datamodule=backward_data_module,
 )
-backward_trainer.test(
+preds: List[Tensor] = backward_trainer.predict(
     model=backward_model,
     ckpt_path=backward_checkpoint_cb.best_model_path,
     datamodule=step_data_module,
+    return_predictions=True,
 )
+torch.save(preds, "preds.pt")

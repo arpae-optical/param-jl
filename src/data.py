@@ -269,7 +269,7 @@ class StepTestDataModule(pl.LightningDataModule):
             pin_memory=True,
         )
 
-    def test_dataloader(self):
+    def predict_dataloader(self):
         return DataLoader(
             dataset=self.test,
             batch_size=1_000,

@@ -136,7 +136,31 @@ class BackwardModel(pl.LightningModule):
             "dist": dist,
         }
 
-    def training_step(self, batch, batch_nb):
+    def predict_step(self, batch, _batch_nb):
+        (y,) = batch  # y is emiss
+        out = {"params": [], "pred_emiss": [], "true_emiss": y, "pred_loss": []}
+        for pred in [self(y) for _ in range(50)]:
+            x_pred, dist = pred["params"], pred["dist"]
+            out["params"].append(x_pred)
+            if self.forward_model is not None:
+                y_pred = self.forward_model(x_pred)
+                out["pred_emiss"].append(y_pred)
+                y_loss = F.huber_loss(y_pred, y)
+                out["pred_loss"].append(y_loss)
+                kl_loss = (
+                    self.kl_coeff
+                    * kl_divergence(
+                        dist,
+                        Normal(
+                            torch.zeros_like(dist.mean), torch.ones_like(dist.variance)
+                        ),
+                    ).mean()
+                )
+                loss = y_loss + kl_loss
+                print(f"Predicted loss: {loss}")
+        return out
+
+    def training_step(self, batch, _batch_nb):
         # TODO: plot
         y, x = (emiss, laser_params) = batch
 
