@@ -16,6 +16,7 @@ rich = "*"
 wandb = "*"
 test-tube = "*"
 sklearn = "*"
+pudb = "*"
 
 [dev-packages]
 
