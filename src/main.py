@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+from typing import List
 
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import TestTubeLogger, WandbLogger
+from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
+from torch import Tensor
 
 from backwards import BackwardModel
 from data import BackwardDataModule, ForwardDataModule, StepTestDataModule
@@ -89,19 +91,20 @@ forward_trainer = pl.Trainer(
             project="Laser Forward",
             log_model=True,
         ),
-        TestTubeLogger(
-            save_dir="test_tube_logs/forward", name="Forward", create_git_tag=False
+        TensorBoardLogger(
+            save_dir="test_tube_logs/forward",
+            name="Forward",
         ),
     ],
     callbacks=[
         fwd_checkpoint_cb,
+        pl.callbacks.progress.TQDMProgressBar(refresh_rate=100),
     ],
     gpus=torch.cuda.device_count(),
     precision=32,
     # overfit_batches=1,
     # track_grad_norm=2,
     weights_summary="full",
-    progress_bar_refresh_rate=100,
     check_val_every_n_epoch=10,
     gradient_clip_val=0.5,
     log_every_n_steps=min(10, args.forward_num_epochs),
@@ -118,19 +121,17 @@ backward_trainer = pl.Trainer(
             project="Laser Backward",
             log_model=True,
         ),
-        TestTubeLogger(
-            save_dir="test_tube_logs/backward", name="Backward", create_git_tag=False
-        ),
+        TensorBoardLogger(save_dir="test_tube_logs/backward", name="Backward"),
     ],
     callbacks=[
         backward_checkpoint_cb,
+        pl.callbacks.progress.TQDMProgressBar(refresh_rate=10),
     ],
     gpus=torch.cuda.device_count(),
     precision=32,
     # overfit_batches=1,
     # track_grad_norm=2,
     weights_summary="full",
-    progress_bar_refresh_rate=10,
     check_val_every_n_epoch=10,
     gradient_clip_val=0.5,
     log_every_n_steps=min(30, args.backward_num_epochs),
@@ -151,7 +152,10 @@ if args.use_fwd:
     forward_model = ForwardModel()
     if not args.load_checkpoint:
         forward_trainer.fit(model=forward_model, datamodule=forward_data_module)
-    print(f"{fwd_checkpoint_cb.best_model_path=}")
+
+    fwd_checkpoint_cb.best_model_path = (
+        "/home/alok/param_jl/ARPAE/weights/forward/epoch=4649-step=223199.ckpt"
+    )
     forward_trainer.test(
         model=forward_model,
         ckpt_path=fwd_checkpoint_cb.best_model_path,
@@ -163,7 +167,9 @@ else:
 
 if not args.load_checkpoint:
     backward_trainer.fit(model=backward_model, datamodule=backward_data_module)
-print(f"{backward_checkpoint_cb.best_model_path=}")
+backward_checkpoint_cb.best_model_path = (
+    "/home/alok/param_jl/ARPAE/weights/backward/epoch=4339-step=208319.ckpt"
+)
 backward_trainer.test(
     model=backward_model,
     ckpt_path=backward_checkpoint_cb.best_model_path,
