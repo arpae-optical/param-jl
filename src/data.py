@@ -149,7 +149,7 @@ class ForwardDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str]) -> None:
 
-        input, output = data.get_data(self.use_cache)
+        input, output = get_data(self.use_cache)
         splits = split(len(input))
         self.train = TensorDataset(
             input[splits["train"].start : splits["train"].stop],
@@ -200,7 +200,7 @@ class BackwardDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str]) -> None:
 
-        output, input = data.get_data(self.use_cache)
+        output, input = get_data(self.use_cache)
 
         splits = split(len(input))
         self.train = TensorDataset(
@@ -251,24 +251,6 @@ class StepTestDataModule(pl.LightningDataModule):
     def setup(self, stage: Optional[str]) -> None:
         self.test = TensorDataset(utils.step_tensor())
 
-    def train_dataloader(self):
-        return DataLoader(
-            dataset=self.test,
-            batch_size=1_000,
-            shuffle=False,
-            num_workers=16,
-            pin_memory=True,
-        )
-
-    def val_dataloader(self):
-        return DataLoader(
-            dataset=self.test,
-            batch_size=1_000,
-            shuffle=False,
-            num_workers=16,
-            pin_memory=True,
-        )
-
     def predict_dataloader(self):
         return DataLoader(
             dataset=self.test,
@@ -288,11 +270,11 @@ def parse_entry(filename: os.PathLike) -> None:
     x_speed = float(x_speed)
     y_spacing = float(y_spacing)
     power = int(power1) + int(power2) * 10 ** -1
-    data = pd.read_csv(
+    raw_data = pd.read_csv(
         filename, header=None, names=["wavelens", "emisses"], delim_whitespace=True
     )
-    wavelens = data.wavelens
-    emisses = data.emisses
+    wavelens = raw_data.wavelens
+    emisses = raw_data.emisses
     # emissivity_averaged_over_wavelength = ...
     entry = {
         "laser_repetition_rate_kHz": 100,
