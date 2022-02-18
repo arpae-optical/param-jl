@@ -12,45 +12,33 @@ import random
 #from scipy import stat
 import utils
 
+def unnormalize(normed, min, max):
+    return normed*(max-min)+min
 
-Stage = Literal["train", "val", "test"]
-def split(n: int, splits: Optional[Mapping[Stage, float]] = None) -> Dict[Stage, range]:
-    """
-    n: length of dataset
-    splits: map where values should sum to 1 like in `{"train": 0.8, "val": 0.1, "test": 0.1}`
-    """
-    if splits is None:
-        splits = {"train": 0.8, "val": 0.1, "test": 0.1}
-    return {
-        "train": range(0, floor(n * splits["train"])),
-        "val": range(
-            floor(n * splits["train"]),
-            floor(n * splits["train"]) + floor(n * splits["val"]),
-        ),
-        "test": range(floor(n * splits["train"]) + floor(n * splits["val"]), n),
-    }
 
 #importing the data
 wavelength = torch.load(Path("wavelength.pt"))
-real_laser, predicted_laser = torch.load(Path("params_true_back.pt")), torch.load(Path("param_pred.pt"))
-real_emissivity, predicted_emissivity = torch.load(Path("emiss_true_back.pt")), torch.load(Path("preds.pt"))
-predicted_emissivity = predicted_emissivity[0]
-predicted_emissivity = predicted_emissivity["pred_emiss"]
+real_laser= torch.load(Path("params_true_back.pt"))
+real_emissivity, preds = torch.load(Path("emiss_true_back.pt")), torch.load(Path("preds.pt"))
+preds = preds[0]
+predicted_emissivity = preds["pred_emiss"]
 
-#spliting the data
-splits = split(len(real_laser))
+#laser indexed [vae out of 50][wavelength out of 821][params, 14]
+predicted_laser = preds["params"]
+
+arbitrary_index = 20
+
 val_real_laser = real_laser
 
-splits = split(len(predicted_laser))
-val_predicted_laser = predicted_laser
+#splits = split(len(predicted_laser))
+temp_predicted_laser = predicted_laser
 
-splits = split(len(real_emissivity))
 val_real_emissivity = real_emissivity
 
-splits = split(len(predicted_emissivity))
+#splits = split(len(predicted_emissivity))
 val_predicted_emissivity = predicted_emissivity
 
-# all the real data for Nearest Neighbors
+#format the real validation set
 watt1 = real_laser.T[4:].T.cpu()
 watt2 = np.where(watt1 == 1)
 watt = (watt2[1] + 2)/10
@@ -73,315 +61,289 @@ real = []
 real.append(watt)
 real.append(speed)
 real.append(spacing)
-real.append(ef)
-real.append(ew)
 real = np.array(real)
 watt_size = np.size(watt)
 for i in range(len(real)):
-    real[i] = [np.float(entry) for entry in real[i][0:watt_size]]
+    real[i] = [float(entry) for entry in real[i][0:watt_size]]
 real = np.stack(real)
 
-#the predictions from the validation set
-val_hat_watt1 = val_predicted_laser.T[4:].T.cpu()
-val_hat_watt2 = np.where(val_hat_watt1 == 1)
-val_hat_watt = (val_hat_watt2[1] + 2)/10
-val_hat_watt = np.reshape(np.array(val_hat_watt),(len(val_hat_watt),1))
-
-val_hat_speed = val_predicted_laser.T[:1].T.cpu()
-val_hat_speed = np.array(val_hat_speed.detach())
-
-val_hat_spacing = val_predicted_laser.T[1:2].T.cpu()
-val_hat_spacing = np.array(val_hat_spacing.detach())
-
-val_hat_ef = val_predicted_laser.T[2:3].T.cpu()
-val_hat_ef = np.array(val_hat_ef.detach())
-
-val_hat_ew = val_predicted_laser.T[3:4].T.cpu()
-val_hat_ew = np.array(val_hat_ew.detach())
-
-val_hat = []
-val_hat.append(val_hat_watt)
-val_hat.append(val_hat_speed)
-val_hat.append(val_hat_spacing)
-val_hat.append(val_hat_ef)
-val_hat.append(val_hat_ew)
-val_hat = np.array(val_hat)
-watt_size = np.size(val_hat_watt)
-print(watt_size)
-for i in range(len(val_hat)):
-    val_hat[i] = [np.float(entry) for entry in val_hat[i][0:watt_size]]
-val_hat = np.stack(val_hat)
-
-
-#the real data from the validation set
-val_watt1 = val_real_laser.T[4:].T.cpu()
-val_watt2 = np.where(val_watt1 == 1)
-val_watt = (val_watt2[1] + 2)/10
-val_watt = np.reshape(np.array(val_watt),(len(val_watt),1))
-
-val_speed = val_real_laser.T[:1].T.cpu()
-val_speed = np.array(val_speed)
-
-val_spacing = val_real_laser.T[1:2].T.cpu()
-val_spacing = np.array(val_spacing)
-
-val_ef = val_real_laser.T[2:3].T.cpu()
-val_ef = np.array(val_ef.detach())
-
-val_ew = val_real_laser.T[3:4].T.cpu()
-val_ew = np.array(val_ew.detach())
-
-
-val = []
-val.append(val_watt)
-val.append(val_speed)
-val.append(val_spacing)
-val.append(val_ef)
-val.append(val_ew)
-val = np.array(val)
-
-
-watt_size = np.size(val_watt)
-print(watt_size)
-for i in range(len(val)):
-    val[i] = [np.float(entry) for entry in val[i][0:watt_size]]
-val = np.stack(val)
-
-
-
-#make and fit the nearest neighbors
-#neigh = NearestNeighbors(n_neighbors=1)
-#neigh.fit(real.T)
-
-#get random indexes and the corresponding indexes of the nearest neighbors
-n = []
-#m = []
-for i in range(400):
-    n.append(i)
-    #m.append(neigh.kneighbors(X=val_hat.T[n[i]].reshape(1, -1), n_neighbors=1, return_distance=False))
-
-def unnormalize(normed, min, max):
-    return normed*(max-min)+min
-
-
-# sqrt_data_size = math.ceil((len(real_laser))**0.5)
-
-
-
-# plt.suptitle('Predicted vs Expected vs Manufactured Laser Params: Random Validation', fontsize = 100)
-# plt.tight_layout(pad = 10)
-# plt.subplots_adjust(top=(1-0.5/sqrt_data_size))
-# plt.show()
-
-
-# #graph the laser params
-# fig = plt.figure(figsize = (sqrt_data_size*10,sqrt_data_size*10))
-# for i in range(48):
-#     ax = fig.add_subplot(sqrt_data_size, sqrt_data_size, i+1, projection = '3d')
-#     # #sort by watt, then speed, then spacing
-#     # print("watt")
-#     # print(val[0][n[i]])
-#     # print("speed")
-#     # #minspeed = 10, maxspeed = 700
-#     # print(unnormalize(val[1][n[i]], min = 10, max = 700))
-#     # print("spacing")
-#     # #min 1 max 42
-#     ax.scatter(val[1][n[i]], val[0][n[i]], val[2][n[i]],s =200, c= 'black', label = 'Expected')
-#     ax.scatter(val_hat[1][n[i]], val_hat[0][n[i]], val_hat[2][n[i]], s =200, c = 'r', label = 'Predicted')
-    
-
-
-    
-
-#     ax.set_title(f'Index = {n[i]}', fontsize = 60)
-    
-#     ax.set_xlabel('Speed', fontsize = 40, labelpad = 20)
-#     ax.set_ylabel('Watt', fontsize = 40, labelpad = 40)
-#     ax.set_zlabel('Spacing', fontsize = 40, labelpad = 20)
-            
-#     ax.set_xlim(0,1)
-#     ax.set_ylim(0,1.4)
-#     ax.set_zlim(0,1)
-
-#     ax.tick_params(axis='both', labelsize=20)
-#     plt.legend(fontsize = 20, loc = 'upper right')
-
-    
-# fig.savefig('temp_scatter.png', dpi=fig.dpi)
-
-# # graph the wavelength and emissivity
-# plt.suptitle('Predicted vs Expected vs Nearest Laser Params: Random Validation', fontsize = 100)
-# plt.tight_layout(pad = 10)
-# plt.subplots_adjust(top=(1-0.5/sqrt_data_size))
-# plt.show()
-# fig = plt.figure(figsize = (sqrt_data_size*10,sqrt_data_size*10))
-
-
-# for i in range(400):
-#     watt = val[0][n[i]]
-#     speed = unnormalize(val[1][n[i]], min = 10, max = 700)
-#     spacing = unnormalize(val[2][n[i]], min = 1, max = 42)
-#     watt_str = str(round(watt,1))
-#     watt_ones = watt_str[0]
-#     watt_tens = watt_str[2]
-#     speed_num = round(speed,1)
-#     if speed_num%1 < 0.001:
-#         speed_str = str(int(round(speed_num,0)))
-#     else:
-#         speed_str = str(speed_num)
-#     spacing_str = "blank"
-#     spacing_num = round(spacing,1)
-#     if spacing_num%1 < 0.001:
-#         spacing_str = str(int(round(spacing_num,0)))
-#     else:
-#         spacing_str = str(spacing_num)
-    
-#     # with open(f"Stainless steel_Validation/{watt_ones}_{watt_tens}W/Power_{watt_ones}_{watt_tens}_W_Speed_{speed_str}_mm_s_Spacing_{spacing_str}_um.txt", 'r') as f:
-#     #     lines = f.readlines()
-
-#     # count = 0
-#     # manufactured_emiss_list = []
-#     # for line in lines[0:934]:
-#     #     manufactured_emiss_list.append(float(line[17:32]))
-#     ax = fig.add_subplot(sqrt_data_size, sqrt_data_size, i+1)
-    
-#     ax.scatter(wavelength[0][0:821], val_real_emissivity.detach()[n[i]].cpu(), s =10, c= 'black', label = 'Expected')
-#     ax.scatter(wavelength[0][0:821], val_predicted_emissivity.detach()[n[i]].cpu(), s =10, c = 'r', label = 'Predicted')
-    
-    
-#     ax.set_title(f'Index = {n[i]}', fontsize = 60)
-#     ax.set_xlabel('Wavelength', fontsize = 40)
-#     ax.set_ylabel('Emissivity', fontsize = 40)
-
-#     ax.set_xlim(0,26)
-#     ax.set_ylim(0,1)
-
-#     ax.tick_params(axis='both', labelsize=20)
-#     plt.legend(fontsize = 20, loc = 'lower left')
-# plt.suptitle('Predicted vs Expected vs Manufactured Emissivity: Random Validation', fontsize = 100)         
-# plt.tight_layout(pad = 10)
-# plt.subplots_adjust(top=(1-1/sqrt_data_size))
-# fig.savefig('temp_graph.png', dpi=fig.dpi)
-
-planck_list = []
-max = 0
-
+#extend emissivity wavelength x values
 extended_max = 2.5
 extended_min = 0.5
 granularity = 100
 
 extension = torch.tensor([extended_max-(i+1)/granularity*(extended_max-extended_min) for i in range(granularity)])
 
-extended_wave = torch.cat((wavelength[0][113:933], extension))
+extended_wave = torch.cat((wavelength[0][115:935], extension))
 
+extended_wave = np.flip(np.array(extended_wave))
 
-for wavelen_index in range(680, 740): #starts at 5.9um ish
-    wavelen_cutoff = extended_wave[821-wavelen_index-1] # wavelen_index 0 indexes 2.5 um
-    for i in range(50):
+predvsideal = False
+if predvsideal == True:
+    for p in range(4):
+        plt.figure(p)
+        wavelen_list = [4.605, 6.115, 3.5, 2.5]
+        wavelen_index = [567, 706, 389, 100][p]
+        wavelen_cutoff = wavelen_list[p]
+        plt.title('Predicted Emissivity vs Ideal TPV Emitter')
+        plt.show()
 
-        #extend wavelen to 0.5
+        temp = 1400 
+        plot_index = 0
+        #for wavelen_index in range(200,700,5):
+        plot_index += 1
+        planck = [float(utils.planck(wavelen, temp)) for wavelen in extended_wave]
+
+        planck_max = max(planck)
+        planck = [wave/planck_max for wave in planck]
+
+        new_score = 0
         
-        old_emiss = val_predicted_emissivity[i][wavelen_index]
-        first_emiss = np.float(old_emiss[0])
-        new_emiss = torch.cat((torch.tensor([first_emiss for i in range(100)]), old_emiss))
+        wavelen_cutoff = extended_wave[wavelen_index]
 
-        new_score = utils.planck_emiss_prod(extended_wave, new_emiss, wavelen_cutoff, 1400)
-        if new_score > max:
-            max = new_score
+        #format the predicted params
+        for i in range(50):
             
-            print("wavelen cutoff")
-            print(wavelen_cutoff)
-            print("index")
-            print(i)
-            print("new score")
-            print(new_score)
-            planck_list.append((wavelen_index, max, i))
+            
+            new_laser = predicted_laser[i][wavelen_index]
+            watt1 = new_laser[4:]
+            watt2 = np.where(watt1 == 1)
+            watt = (watt2[0] + 2)/10
+            watt = np.reshape(np.array(watt),(len(watt),1))
 
-print(planck_list)
+            speed = new_laser.T[:1].T.cpu()
+            speed = np.array(speed)
+
+            spacing = new_laser.T[1:2].T.cpu()
+            spacing = np.array(spacing)
+
+            ef = new_laser.T[2:3].T.cpu()
+            ef = np.array(ef.detach())
+
+            ew = new_laser.T[3:4].T.cpu()
+            ew = np.array(ew.detach())
+
+
+            pred_laser = []
+            pred_laser.append(watt)
+            pred_laser.append(speed)
+            pred_laser.append(spacing)
+            watt_size = np.size(watt)
+            for k in range(len(pred_laser)):
+                pred_laser[k] = [float(entry) for entry in pred_laser[k][0:watt_size]]
+            pred_laser = np.stack(pred_laser)
+
+
+            print(pred_laser[0])
+            #minspeed = 10, maxspeed = 700
+            print(unnormalize(pred_laser[1], min = 10, max = 700)) 
+            #min 1 max 42
+            print(unnormalize(pred_laser[2], min = 1, max = 42))
+            old_emiss = val_predicted_emissivity[i][wavelen_index]
+            first_emiss = float(old_emiss[0])
+            new_emiss = torch.cat((torch.tensor([first_emiss for j in range(100)]), old_emiss))
+
+            plt.plot(extended_wave[0:919], new_emiss[0:919], c= 'blue', alpha = 0.2, linewidth = 1.0)
+            # if i == 3:    
+            #     new_score = utils.planck_emiss_prod(extended_wave, new_emiss, wavelen_cutoff, 1400)
+
+
+            plt.xlabel('Wavelength (um)', fontsize = 16)
+            plt.ylabel('Emissivity', fontsize = 16)
+
+        plt.plot(extended_wave[0:919], new_emiss[0:919], c= 'blue', alpha = 0.2, linewidth = 1.0, label = 'Predicted Emissivities')
+
+        # rand_index = random.randint(1,399)
+        # old_emiss = np.flip(np.array(real_emissivity[rand_index].cpu()))
+        # first_emiss = float(old_emiss[0])
+        # new_emiss = np.concatenate((np.array([first_emiss for j in range(100)]), old_emiss))
+        # max_FoMM = utils.planck_emiss_prod(extended_wave, new_emiss, wavelen_cutoff, 1400)
+
+        # plt.plot(extended_wave[0:919], new_emiss[0:919], c= 'red', alpha = 0.1, label = 'Random training data')
+
+        # #make random emiss curves from real validation
+        # max_index = 0
+        # for i in range(20):
+        #     rand_index = random.randint(1,399)
+        #     old_emiss = np.flip(np.array(real_emissivity[rand_index].cpu()))
+        #     first_emiss = float(old_emiss[0])
+        #     new_emiss = np.concatenate((np.array([first_emiss for j in range(100)]), old_emiss))
+        #     new_FoMM = utils.planck_emiss_prod(extended_wave, new_emiss, wavelen_cutoff, 1400)
+        #     if new_FoMM > max_FoMM:
+        #         max_FoMM = new_FoMM
+        #         max_index = i
+        #     plt.plot(extended_wave[0:919], new_emiss[0:919], c= 'red', alpha = 0.1, linewidth = 2.0)
+
+
+        # #Best Random
+        # old_emiss = np.flip(np.array(real_emissivity[max_index].cpu()))
+        # first_emiss = float(old_emiss[0])
+        # new_emiss = np.concatenate((np.array([first_emiss for j in range(100)]), old_emiss))
+        # plt.plot(extended_wave[0:919], new_emiss[0:919], c= 'maroon', alpha = 1, linewidth = 3.0, label = f'Best random, FoM {round(float(max_FoMM),2)}')
+
+
+        #Best Predicted (fixed wavelen and index)
+        old_emiss = val_predicted_emissivity[3][wavelen_index]
+        first_emiss = float(old_emiss[0])
+        new_emiss = torch.cat((torch.tensor([first_emiss for j in range(100)]), old_emiss))
+
+        #Pristine stainless
+        with open(f"src/pristine_stainless_x.txt", 'r') as f:
+            lines = f.readlines()
+
+        pristine_x_old = [float(line[0:6]) for line in lines[228:1866]]
+
+        pristine_x = pristine_x_old + [extended_max-(i+1)/granularity*(extended_max-extended_min) for i in range(granularity)]
+
+
+        with open(f"src/pristine_stainless_y.txt", 'r') as f:
+            lines = f.readlines()
+
+        pristine_y_old = [float(line[0:6]) for line in lines[228:1866]]
+
+        first_emiss = pristine_y_old[-1]
+        pristine_y = pristine_y_old + [first_emiss for i in range(granularity)]
+
+
+        pristine_FoMM = utils.planck_emiss_prod(pristine_x, pristine_y, wavelen_cutoff, 1400)
+
+        plt.plot(pristine_x, pristine_y, '--', color = 'grey', linewidth = 2.0, label = f'Plain substrate, FoM = {round(float(pristine_FoMM),2)}')
+
+        plt.plot(extended_wave[0:919], utils.step_at_n(extended_wave, wavelen_cutoff)[0:919], c= 'black', label = f'Ideal target emissivity', linewidth = 2.0)
+
+        #plt.plot(extended_wave[0:919], new_emiss[0:919], c= 'limegreen', alpha = 1, label = f'Best generated design, FoM {round(float(new_score),2)}', linewidth = 3.0)
+
+        #plt.plot(extended_wave[0:919], planck[0:919], c= 'red', label = f'planck temp {temp} K', linewidth = 2.0)
+
+        leg = plt.legend(loc = 'upper right', prop={'size': 8})
+
+        for legobj in leg.legendHandles:
+            legobj.set_linewidth(2.0)
+            legobj.set_alpha(1)
+
+        leg.legendHandles[0].set_alpha(0.4)
+
+        plt.savefig('vs_training_pristine_'+str(wavelen_index)+'.png', dpi = 300)
+
+Laser_E_P_list = []
+Laser_E_M_list = []
+Laser_P_M_list = []
+Emiss_E_P_list = []
+Emiss_E_M_list = []
+Emiss_P_M_list = []
+
+
+#randomly sample from real validation
+
     
-# Laser_E_P_list = []
-# Laser_E_M_list = []
-# Laser_P_M_list = []
-# Emiss_E_P_list = []
-# Emiss_E_M_list = []
-# Emiss_P_M_list = []
 
+for q in range(144):
+    # rand_index = random.randint(1,399)
+    # old_emiss = np.flip(np.array(real_emissivity[rand_index].cpu()))
+    # first_emiss = float(old_emiss[0])
+    # new_emiss = np.concatenate((np.array([first_emiss for j in range(100)]), old_emiss))
 
-# for i in range(159):
+    vae_index = random.randint(0,49)
+    wavelen_index = q*5+100
+    wavelen_cutoff = extended_wave[wavelen_index]
+    #set whichever wavelength the step function occurs at
     
+    old_emiss = utils.step_at_n(extended_wave, wavelen_cutoff)
+
+    new_laser = predicted_laser[arbitrary_index][wavelen_index]
+    #format the predicted params
+    watt1 = new_laser.T[4:].T.cpu()
+    watt2 = np.where(watt1 == 1)
+    watt = (watt2[0] + 2)/10
+    watt = np.reshape(np.array(watt),(len(watt),1))
+
+    speed = new_laser.T[:1].T.cpu()
+    speed = np.array(speed)
+
+    spacing = new_laser.T[1:2].T.cpu()
+    spacing = np.array(spacing)
+
+    ef = new_laser.T[2:3].T.cpu()
+    ef = np.array(ef.detach())
+
+    ew = new_laser.T[3:4].T.cpu()
+    ew = np.array(ew.detach())
 
 
-#     watt = val[0][n[i]]
-#     speed = unnormalize(val[1][n[i]], min = 10, max = 700)
-#     spacing = unnormalize(val[2][n[i]], min = 1, max = 42)
-#     watt_str = str(round(watt,1))
-#     watt_ones = watt_str[0]
-#     watt_tens = watt_str[2]
-#     speed_num = round(speed,1)
-#     if speed_num%1 < 0.001:
-#         speed_str = str(int(round(speed_num,0)))
-#     else:
-#         speed_str = str(speed_num)
-#     spacing_str = "blank"
-#     spacing_num = round(spacing,1)
-#     if spacing_num%1 < 0.001:
-#         spacing_str = str(int(round(spacing_num,0)))
-#     else:
-#         spacing_str = str(spacing_num)
+    pred_laser = []
+    pred_laser.append(watt)
+    pred_laser.append(speed)
+    pred_laser.append(spacing)
+    watt_size = np.size(watt)
+    for k in range(len(pred_laser)):
+        pred_laser[k] = [float(entry) for entry in pred_laser[k][0:watt_size]]
+    pred_laser = np.stack(pred_laser)
 
-    
-#     manufactured_emiss_list = []
-#     print(f"Stainless steel_Validation/{watt_ones}_{watt_tens}W/Power_{watt_ones}_{watt_tens}_W_Speed_{speed_str}_mm_s_Spacing_{spacing_str}_um.txt")
-#     my_file = Path(f"Stainless steel_Validation/{watt_ones}_{watt_tens}W/Power_{watt_ones}_{watt_tens}_W_Speed_{speed_str}_mm_s_Spacing_{spacing_str}_um.txt")
-#     if my_file.is_file():
-#         with open(f"Stainless steel_Validation/{watt_ones}_{watt_tens}W/Power_{watt_ones}_{watt_tens}_W_Speed_{speed_str}_mm_s_Spacing_{spacing_str}_um.txt", 'r') as f:
-#             lines = f.readlines()
-#         count = 0
-#         for line in lines[0:933]:
-#             manufactured_emiss_list.append(float(line[17:32]))
-    
-#         real_emiss_list = val_real_emissivity.detach()[n[i]].cpu()
-#         predicted_emiss_list = val_predicted_emissivity.detach()[n[i]].cpu()
-#         MSE_E_P = 0
-#         MSE_E_M = 0
-#         MSE_P_M = 0
-#         for wavelen_i in range(933):
-#             MSE_E_P += (real_emiss_list[wavelen_i]-predicted_emiss_list[wavelen_i])**2
-#             print(i)
-#             MSE_E_M += (manufactured_emiss_list[wavelen_i]-real_emiss_list[wavelen_i])**2
+    val_hat = pred_laser
 
-#             MSE_P_M += (manufactured_emiss_list[wavelen_i]-predicted_emiss_list[wavelen_i])**2
+    #sort by watt, then speed, then spacing
+    real_emiss_list = old_emiss
+    predicted_emiss_list = val_predicted_emissivity[vae_index][wavelen_index]
+    RMSE_E_P = 0
+    for wavelen_i in range(819):
+        RMSE_E_P += (real_emiss_list[wavelen_i]-predicted_emiss_list[wavelen_i])**2
+    Emiss_E_P_list.append(RMSE_E_P.item()/820)
+
+    diff_expected_predicted = extended_wave[wavelen_index]
+    Laser_E_P_list.append(diff_expected_predicted)
+
+plt.figure(8)
+plt.plot(Laser_E_P_list, Emiss_E_P_list, 'o')
+plt.title("Laser Params vs Emiss")
+plt.xlabel("Wavelength Cutoff")
+plt.ylabel("Emissivity Residuals")
+# plt.annotate("r-squared = {:.3f}".format(r_value), (0, 1))
+plt.show()
+plt.savefig('tempEPgraph.png')
+# plt.plot(x1,y1,'-r')
 
 
-#         Emiss_E_P_list.append(MSE_E_P/933)
-#         Emiss_E_M_list.append(MSE_E_M/933)
-#         Emiss_P_M_list.append(MSE_P_M/933)
-#         diff_expected_predicted = (abs(val[1][n[i]]-val_hat[1][n[i]])+abs(val[0][n[i]]-val_hat[0][n[i]])+abs(val[2][n[i]]-val_hat[2][n[i]]))/3
-#         Laser_E_P_list.append(diff_expected_predicted)
-#         diff_expected_manufactured = (abs(real[1][n[i]]-val_hat[1][n[i]])+abs(real[0][n[i]]-val_hat[0][n[i]])+abs(real[2][n[i]]-val_hat[2][n[i]]))/3
-#         Laser_E_M_list.append(diff_expected_manufactured)
-#         diff_predicted_manufactured = (abs(real[1][n[i]]-val[1][n[i]])+abs(real[0][n[i]]-val[0][n[i]])+abs(real[2][n[i]]-val[2][n[i]]))/3
-#         Laser_P_M_list.append(diff_predicted_manufactured)
 
+    # max_FoMM = 1.5
+    # cutoff_adjusted_max = 1
 
-# x = np.array(Laser_E_P_list)
-# y = np.array(Emiss_E_P_list)
-# # gradient, intercept, r_value, p_value, std_err = stats.linregress(x,y)
-# # mn=np.min(x)
-# # mx=np.max(x)
-# # x1=np.linspace(mn,mx,500)
-# # y1=gradient*x1+intercept
-# plt.plot(x,y,'ob')
-# # plt.plot(x1,y1,'-r')
-# plt.title("Laser Params vs Emiss")
-# plt.xlabel("Laser Parameters Residuals")
-# plt.ylabel("Emissivity Residuals")
-# # plt.annotate("r-squared = {:.3f}".format(r_value), (0, 1))
-# plt.show()
-# plt.savefig('temp_oops_expected_predicted_graph.png')
+    # for wavelen_index in range(520,819): #starts at 5.9um ish
+    #     wavelen_cutoff = extended_wave[wavelen_index] # wavelen_index 0 indexes 2.5 um
+    #     for i in range(50):
 
-# plt.plot(Laser_E_M_list, Emiss_E_M_list, 'o')
-# plt.savefig('expected_manufactured_graph.png')
-# plt.plot(Laser_P_M_list, Emiss_P_M_list, 'o')
-# plt.savefig('manufactured_predicted_graph.png')
+    #         #extend wavelen to 0.5
+            
+    #         old_emiss = val_predicted_emissivity[i][wavelen_index]
+    #         first_emiss = float(old_emiss[0])
+    #         new_emiss = torch.cat((torch.tensor([first_emiss for i in range(100)]), old_emiss))
+
+    #         new_score = utils.planck_emiss_prod(extended_wave, new_emiss, wavelen_cutoff, 1400)
+
+    #         # cutoff_adjusted_score = new_score*((11.5-wavelen_cutoff)/wavelen_cutoff)
+    #         # if cutoff_adjusted_score > cutoff_adjusted_max:
+    #         #     cutoff_adjusted_max = cutoff_adjusted_score
+    #         #     print("NEW BEST")
+    #         #     print(cutoff_adjusted_score)
+    #         #     print("wavelen cutoff")
+    #         #     print(wavelen_cutoff)
+    #         #     print("wavelen index")
+    #         #     print(wavelen_index)
+    #         #     print("index")
+    #         #     print(i)
+    #         #     print("new score")
+    #         #     print(new_score)
+                
+    #         if new_score > max_FoMM:
+    #             max_FoMM = new_score
+    #             # print("Not best")
+    #             # print(cutoff_adjusted_score)
+    #             print("wavelen cutoff")
+    #             print(wavelen_cutoff)
+    #             print("wavelen index")
+    #             print(wavelen_index)
+    #             print("index")
+    #             print(i)
+    #             print("new score")
+    #             print(new_score)
+                
 
