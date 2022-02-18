@@ -30,13 +30,13 @@ def split(n: int, splits: Optional[Mapping[Stage, float]] = None) -> Dict[Stage,
         "test": range(floor(n * splits["train"]) + floor(n * splits["val"]), n),
     }
 
-def planck_norm(wavelen, temp):
+def planck(wavelen, temp):
     e = 2.7182818
     c1 = 1.191042*10**8
     denom1 = e**(1.4387752*10**4/wavelen/temp)-1
     denom2 = wavelen**5*(denom1)
-    emiss = c1/denom2 
-    return(emiss)
+    planck = c1/denom2
+    return(planck)
 
 def planck_emiss_prod(wave_x, emiss_y, wavelen, temp):
     """
@@ -52,11 +52,11 @@ def planck_emiss_prod(wave_x, emiss_y, wavelen, temp):
     for i in range(len(wave_x)-1):
         if wave_x[i] < wavelen:
             width = abs(wave_x[i+1]-wave_x[i])
-            value = planck_norm(wavelen, temp)
+            value = planck(wavelen, temp)
             total_before += width*value*emiss_y[i]
         else:
             width = abs(wave_x[i+1]-wave_x[i])
-            value = planck_norm(wavelen, temp)
+            value = planck(wavelen, temp)
             total_after += width*value*emiss_y[i]
     figure_of_merit_metric = total_before/total_after
     return(figure_of_merit_metric)
@@ -66,13 +66,11 @@ def planck_emiss_prod(wave_x, emiss_y, wavelen, temp):
 
 
 
-    return(loss)
-
 def rmse(pred: Tensor, target: Tensor):
     """Root mean squared error."""
     return torch.nn.functional.mse_loss(pred, target).sqrt()
 
-def step_at_n(n: float = 3.5, max: float = 12):
+def step_at_n(wavelength_list, n: float = 3.5):
     """Returns tuple of x and y which corresponds to a function that outputs 0 at index < n, and 1 at index > n.
 
     n: wavelength to step down at
@@ -81,15 +79,13 @@ def step_at_n(n: float = 3.5, max: float = 12):
     
     """
     
-    wavelength = torch.load(Path("wavelength.pt"))
+    wavelength = wavelength_list
     low = 0
-    high = 0
-    for i, wl in enumerate(wavelength[0]):
+    for i, wl in enumerate(wavelength):
         if wl < n:
             low = i
-        if wl < max:
-            high = i
 
-    x = wavelength[0][low:high]
-    y = [1 for i in range(low)] + [0 for i in range(high-low)]
-    return (x, y)
+    print(wavelength_list[low])
+
+    y = [1 for i in range(low)] + [0 for i in range(len(wavelength_list)-low)]
+    return y
