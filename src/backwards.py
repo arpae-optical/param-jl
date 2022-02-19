@@ -137,7 +137,7 @@ class BackwardModel(pl.LightningModule):
         }
 
     def predict_step(self, batch, _batch_nb):
-        (y,) = batch  # y is emiss
+        y = batch[0]  # y is emiss
         out = {"params": [], "pred_emiss": [], "true_emiss": y, "pred_loss": []}
         for pred in [self(y) for _ in range(50)]:
             x_pred, dist = pred["params"], pred["dist"]

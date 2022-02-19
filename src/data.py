@@ -243,6 +243,14 @@ class BackwardDataModule(pl.LightningDataModule):
             num_workers=16,
         )
 
+    def predict_dataloader(self):
+        return DataLoader(
+            dataset=self.val,
+            batch_size=self.batch_size,
+            shuffle=False,
+            pin_memory=True,
+            num_workers=16,
+        )
 
 class StepTestDataModule(pl.LightningDataModule):
     def __init__(self) -> None:
