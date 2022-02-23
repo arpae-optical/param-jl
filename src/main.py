@@ -176,10 +176,11 @@ backward_trainer.test(
     datamodule=backward_data_module,
 )
 
-preds: List[Tensor] = backward_trainer.predict(
-    model=backward_model,
-    ckpt_path=backward_checkpoint_cb.best_model_path,
-    datamodule=backward_data_module,
-    return_predictions=True,
-)
-torch.save(preds, f"preds_{1}_validation.pt")
+for i in range(150):
+    preds: List[Tensor] = backward_trainer.predict(
+        model=backward_model,
+        ckpt_path=backward_checkpoint_cb.best_model_path,
+        datamodule=backward_data_module,
+        return_predictions=True,
+    )
+    torch.save(preds, f"src/preds_i_validation/preds_{i}_validation")
