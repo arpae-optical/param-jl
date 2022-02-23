@@ -158,7 +158,7 @@ class BackwardModel(pl.LightningModule):
                     * kl_divergence(
                         dist,
                         Normal(
-                            torch.zeros_like(dist.mean), torch.ones_like(dist.variance)
+                            torch.zeros_like(dist.mean), torch.ones_like(dist.variance)/50
                         ),
                     ).mean()
                 )
