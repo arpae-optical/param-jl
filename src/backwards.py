@@ -96,7 +96,7 @@ class BackwardModel(pl.LightningModule):
             nn.Flatten(),
         )
 
-        Z = 1024
+        Z = 30
         self.mean_head = nn.LazyLinear(Z)
         self.log_var_head = nn.LazyLinear(Z)
 
