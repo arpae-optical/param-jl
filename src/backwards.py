@@ -137,8 +137,14 @@ class BackwardModel(pl.LightningModule):
         }
 
     def predict_step(self, batch, _batch_nb):
-        y = batch[0]  # y is emiss
-        out = {"params": [], "pred_emiss": [], "true_emiss": y, "pred_loss": []}
+        out = {"params": [], "pred_emiss": [], "pred_loss": []}
+        # If step data, there's no corresponding laser params
+        try:
+            (y,) = batch  # y is emiss
+        except ValueError:
+            (y, x) = batch  # y is emiss,x is laser_params
+            out["true_params"] = x
+        out["true_emiss"] = y
         for pred in [self(y) for _ in range(50)]:
             x_pred, dist = pred["params"], pred["dist"]
             out["params"].append(x_pred)
