@@ -54,14 +54,21 @@ parser.add_argument(
     help="Load saved dataset (avoids 1 minute startup cost of fetching data from database, useful for quick tests).",
 )
 parser.add_argument(
-    "--use-fwd",
+    "--use-forward",
     type=eval,
     choices=[True, False],
     default=True,
     help="Whether to use a forward model at all",
 )
 parser.add_argument(
-    "--load-checkpoint",
+    "--load-forward-checkpoint",
+    type=eval,
+    choices=[True, False],
+    default=False,
+    help="Load trained model. Useful for validation. Requires model to already be trained and saved.",
+)
+parser.add_argument(
+    "--load-backward-checkpoint",
     type=eval,
     choices=[True, False],
     default=False,
@@ -155,9 +162,9 @@ step_data_module = StepTestDataModule()
 # "/home/alok/param_jl/ARPAE/weights/backward/epoch=2159-step=103679.ckpt"
 
 # TODO: load checkpoint for both forward and back
-if args.use_fwd:
+if args.use_forward:
     forward_model = ForwardModel()
-    if not args.load_checkpoint:
+    if not args.load_forward_checkpoint:
         forward_trainer.fit(model=forward_model, datamodule=forward_data_module)
 
     # XXX needs to be cast to str to avoid a TypeError in the wandb logger.
@@ -176,7 +183,7 @@ if args.use_fwd:
 else:
     backward_model = BackwardModel(forward_model=None)
 
-if not args.load_checkpoint:
+if not args.load_backward_checkpoint:
     backward_trainer.fit(model=backward_model, datamodule=backward_data_module)
 # XXX needs to be cast to str to avoid a TypeError in the wandb logger.
 backward_checkpoint_cb.best_model_path = str(
