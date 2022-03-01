@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+from pathlib import Path
 from typing import List
 
 import pytorch_lightning as pl
@@ -147,18 +149,27 @@ backward_data_module = BackwardDataModule(
 )
 step_data_module = StepTestDataModule()
 
+# "/home/alok/param_jl/ARPAE/weights/forward/epoch=4649-step=223199.ckpt"
+# "/home/alok/param_jl/ARPAE/weights/forward/epoch=4979-step=239039.ckpt"
+# "/home/alok/param_jl/ARPAE/weights/backward/epoch=4339-step=208319.ckpt"
+# "/home/alok/param_jl/ARPAE/weights/backward/epoch=2159-step=103679.ckpt"
+
 # TODO: load checkpoint for both forward and back
 if args.use_fwd:
     forward_model = ForwardModel()
     if not args.load_checkpoint:
         forward_trainer.fit(model=forward_model, datamodule=forward_data_module)
 
-    fwd_checkpoint_cb.best_model_path = (
-        "/home/alok/param_jl/ARPAE/weights/forward/epoch=4649-step=223199.ckpt"
+    # XXX needs to be cast to str to avoid a TypeError in the wandb logger.
+    fwd_checkpoint_cb.best_model_path = str(
+        max(
+            Path("/home/alok/param_jl/ARPAE/weights/forward").glob("*.ckpt"),
+            key=os.path.getctime,
+        )
     )
     forward_trainer.test(
         model=forward_model,
-        ckpt_path=fwd_checkpoint_cb.best_model_path,
+        ckpt_path=str(fwd_checkpoint_cb.best_model_path),
         datamodule=forward_data_module,
     )
     backward_model = BackwardModel(forward_model=forward_model)
@@ -167,12 +178,16 @@ else:
 
 if not args.load_checkpoint:
     backward_trainer.fit(model=backward_model, datamodule=backward_data_module)
-backward_checkpoint_cb.best_model_path = (
-    "/home/alok/param_jl/ARPAE/weights/backward/epoch=4339-step=208319.ckpt"
+# XXX needs to be cast to str to avoid a TypeError in the wandb logger.
+backward_checkpoint_cb.best_model_path = str(
+    max(
+        Path("/home/alok/param_jl/ARPAE/weights/backward").glob("*.ckpt"),
+        key=os.path.getctime,
+    )
 )
 backward_trainer.test(
     model=backward_model,
-    ckpt_path=backward_checkpoint_cb.best_model_path,
+    ckpt_path=str(backward_checkpoint_cb.best_model_path),
     datamodule=backward_data_module,
 )
 
