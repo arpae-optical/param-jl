@@ -96,7 +96,7 @@ class BackwardModel(pl.LightningModule):
             nn.Flatten(),
         )
 
-        Z = 30
+        Z = 1024
         self.mean_head = nn.LazyLinear(Z)
         self.log_var_head = nn.LazyLinear(Z)
 
@@ -158,7 +158,8 @@ class BackwardModel(pl.LightningModule):
                     * kl_divergence(
                         dist,
                         Normal(
-                            torch.zeros_like(dist.mean), torch.ones_like(dist.variance)/50
+                            torch.zeros_like(dist.mean),
+                            torch.ones_like(dist.variance) / 50,
                         ),
                     ).mean()
                 )
@@ -186,7 +187,9 @@ class BackwardModel(pl.LightningModule):
                 self.kl_coeff
                 * kl_divergence(
                     dist,
-                    Normal(torch.zeros_like(dist.mean), torch.ones_like(dist.variance)),
+                    Normal(
+                        torch.zeros_like(dist.mean), torch.ones_like(dist.variance) / 50
+                    ),
                 ).mean()
             )
             self.log(
@@ -225,7 +228,9 @@ class BackwardModel(pl.LightningModule):
                 self.kl_coeff
                 * kl_divergence(
                     dist,
-                    Normal(torch.zeros_like(dist.mean), torch.ones_like(dist.variance)),
+                    Normal(
+                        torch.zeros_like(dist.mean), torch.ones_like(dist.variance) / 50
+                    ),
                 ).mean()
             )
             self.log(
@@ -263,7 +268,9 @@ class BackwardModel(pl.LightningModule):
                 self.kl_coeff
                 * kl_divergence(
                     dist,
-                    Normal(torch.zeros_like(dist.mean), torch.ones_like(dist.variance)),
+                    Normal(
+                        torch.zeros_like(dist.mean), torch.ones_like(dist.variance) / 50
+                    ),
                 ).mean()
             )
             self.log(
