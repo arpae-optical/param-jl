@@ -45,21 +45,21 @@ class ForwardModel(pl.LightningModule):
     def training_step(self, batch, batch_nb):
         x, y = batch
         y_pred = self(x)
-        loss = F.huber_loss(y_pred, y)
+        loss = rmse(y_pred, y)
         self.log(f"forward/train/loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_nb):
         x, y = batch
         y_pred = self(x)
-        loss = F.huber_loss(y_pred, y)
+        loss = rmse(y_pred, y)
         self.log(f"forward/val/loss", loss, prog_bar=True)
         return loss
 
     def test_step(self, batch, batch_nb):
         x, y = batch
         y_pred = self(x)
-        loss = F.huber_loss(y_pred, y)
+        loss = rmse(y_pred, y)
         self.log(f"forward/test/loss", loss, prog_bar=True)
         return loss
 

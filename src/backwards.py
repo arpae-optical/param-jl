@@ -151,7 +151,7 @@ class BackwardModel(pl.LightningModule):
             if self.forward_model is not None:
                 y_pred = self.forward_model(x_pred)
                 out["pred_emiss"].append(y_pred)
-                y_loss = F.huber_loss(y_pred, y)
+                y_loss = rmse(y_pred, y)
                 out["pred_loss"].append(y_loss)
                 kl_loss = (
                     self.kl_coeff
@@ -175,14 +175,14 @@ class BackwardModel(pl.LightningModule):
         x_pred, dist = x_pred["params"], x_pred["dist"]
         if self.forward_model is None:
             with torch.no_grad():
-                x_loss = F.huber_loss(x_pred, x)
+                x_loss = rmse(x_pred, x)
         else:
-            x_loss = F.huber_loss(x_pred, x)
+            x_loss = rmse(x_pred, x)
         loss = x_loss
         self.log("backward/train/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
-            y_loss = F.huber_loss(y_pred, y)
+            y_loss = rmse(y_pred, y)
             kl_loss = (
                 self.kl_coeff
                 * kl_divergence(
@@ -215,14 +215,14 @@ class BackwardModel(pl.LightningModule):
         x_pred, dist = x_pred["params"], x_pred["dist"]
         if self.forward_model is None:
             with torch.no_grad():
-                x_loss = F.huber_loss(x_pred, x)
+                x_loss = rmse(x_pred, x)
         else:
-            x_loss = F.huber_loss(x_pred, x)
+            x_loss = rmse(x_pred, x)
         loss = x_loss
         self.log("backward/val/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
-            y_loss = F.huber_loss(y_pred, y)
+            y_loss = rmse(y_pred, y)
 
             kl_loss = (
                 self.kl_coeff
@@ -256,14 +256,14 @@ class BackwardModel(pl.LightningModule):
         x_pred, dist = x_pred["params"], x_pred["dist"]
         if self.forward_model is None:
             with torch.no_grad():
-                x_loss = F.huber_loss(x_pred, x)
+                x_loss = rmse(x_pred, x)
         else:
-            x_loss = F.huber_loss(x_pred, x)
+            x_loss = rmse(x_pred, x)
         loss = x_loss
         self.log("backward/test/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
-            y_loss = F.huber_loss(y_pred, y)
+            y_loss = rmse(y_pred, y)
             kl_loss = (
                 self.kl_coeff
                 * kl_divergence(
