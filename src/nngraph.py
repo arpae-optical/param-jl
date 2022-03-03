@@ -148,10 +148,10 @@ if predvsideal == True:
             MSE_E_P = float(MSE_E_P)
             MSE_laser = float(MSE_laser)
             if MSE_E_P >= 0.1:
-                buckets[floor(MSE_laser/0.1)-1] += 1
-                bucket_totals[floor(MSE_laser/0.1)-1] +=1
+                buckets[floor(MSE_laser/0.1)] += 1
+                bucket_totals[floor(MSE_laser/0.1)] +=1
             if MSE_E_P < 0.1:
-                bucket_totals[floor(MSE_laser/0.1)-1] += 1
+                bucket_totals[floor(MSE_laser/0.1)] += 1
 
             params_list.append(MSE_laser)
 
