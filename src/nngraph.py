@@ -148,10 +148,10 @@ if predvsideal == True:
             MSE_E_P = float(MSE_E_P)
             MSE_laser = float(MSE_laser)
             if MSE_E_P >= 0.1:
-                buckets[round(MSE_laser/0.1)-1] += 1
-                bucket_totals[round(MSE_laser/0.1)-1] +=1
+                buckets[floor(MSE_laser/0.1)-1] += 1
+                bucket_totals[floor(MSE_laser/0.1)-1] +=1
             if MSE_E_P < 0.1:
-                bucket_totals[round(MSE_laser/0.1)-1] += 1
+                bucket_totals[floor(MSE_laser/0.1)-1] += 1
 
             params_list.append(MSE_laser)
 
@@ -176,6 +176,11 @@ if predvsideal == True:
     bucket_x = [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95]
     bucket_y = [0,0,0,0,0,0,0,0,0,0]
     for i in range(10):
+        print(i)
+        print("bucket fill")
+        print(buckets[i])
+        print("out of")
+        print(bucket_totals[i])
         if bucket_totals[i] == 0:
             bucket_y[i] = 0
         else:
