@@ -55,10 +55,12 @@ original_wave = wavelength[0][115:935]
 extended_wave = np.flip(np.array(extended_wave))
 predvsideal = True
 plt.figure(1)
+buckets = [0,0,0,0,0,0,0,0,0,0] #0-0.1, 0.1-0.2, ... , 0.9-1.0
+bucket_totals = [0,0,0,0,0,0,0,0,0,0]
 if predvsideal == True:
     MSE_list = []
     params_list = []
-    for p in range(0,400,40):
+    for p in range(0,400):
         print("pred index")
         print(p)
         
@@ -72,10 +74,8 @@ if predvsideal == True:
         
         plt.title('Predicted Emissivity vs Ideal TPV Emitter')
         plt.show()
-
         temp = 1400 
         for arbitrary_vae in range(50):
-
             new_score = 0
         
             #format the predicted params
@@ -97,59 +97,95 @@ if predvsideal == True:
                 MSE_E_P += (real_emiss_list[wavelen_i]-current_list[wavelen_i])**2
             MSE_E_P = MSE_E_P/819
 
-            if MSE_E_P < 0.05:
 
-                #Laser Param Residuals
-                watt1 = temp_real_laser.T[2:].T.cpu()
-                watt2 = np.where(watt1 == 1)
-                watt = (watt2[0] + 2)/10
+            #Laser Param Residuals
+            watt1 = temp_real_laser.T[2:].T.cpu()
+            watt2 = np.where(watt1 == 1)
+            watt = (watt2[0] + 2)/10
 
-                speed = temp_real_laser.T[:1].T.cpu()
-                speed = np.array(speed)
+            speed = temp_real_laser.T[:1].T.cpu()
+            speed = np.array(speed)
 
-                spacing = temp_real_laser.T[1:2].T.cpu()
-                spacing = np.array(spacing)
+            spacing = temp_real_laser.T[1:2].T.cpu()
+            spacing = np.array(spacing)
 
 
-                real = []
-                real.append(watt)
-                real.append(speed)
-                real.append(spacing)
-                real = np.array(real)
-                watt_size = np.size(watt)
-                for i in range(len(real)):
-                    real[i] = [float(entry) for entry in real[i][0:watt_size]]
-                real = np.stack(real)
-
+            real = []
+            real.append(watt)
+            real.append(speed)
+            real.append(spacing)
+            real = np.array(real)
+            watt_size = np.size(watt)
+            for i in range(len(real)):
+                real[i] = [float(entry) for entry in real[i][0:watt_size]]
+            real = np.stack(real)
 
 
 
-                watt1 = temp_predicted_laser.T[2:].T.cpu()
-                watt2 = np.where(watt1 == 1)
-                watt = (watt2[0] + 2)/10
 
-                speed = temp_predicted_laser.T[:1].T.cpu()
-                speed = np.array(speed)
+            watt1 = temp_predicted_laser.T[2:].T.cpu()
+            watt2 = np.where(watt1 == 1)
+            watt = (watt2[0] + 2)/10
 
-                spacing = temp_predicted_laser.T[1:2].T.cpu()
-                spacing = np.array(spacing)
+            speed = temp_predicted_laser.T[:1].T.cpu()
+            speed = np.array(speed)
+
+            spacing = temp_predicted_laser.T[1:2].T.cpu()
+            spacing = np.array(spacing)
 
 
-                predicted = []
-                predicted.append(watt)
-                predicted.append(speed)
-                predicted.append(spacing)
-                predicted = np.array(predicted)
-                watt_size = np.size(watt)
-                for i in range(len(predicted)):
-                    predicted[i] = [float(entry) for entry in predicted[i][0:watt_size]]
-                predicted = np.stack(predicted)
-                MSE_laser = ((predicted[0]-real[0])**2+(predicted[1]-real[1])**2+(predicted[2]-real[2])**2)/3
-                
-                params_list.append(float(MSE_laser))
-
-                MSE_list.append(float(MSE_E_P))
+            predicted = []
+            predicted.append(watt)
+            predicted.append(speed)
+            predicted.append(spacing)
+            predicted = np.array(predicted)
+            watt_size = np.size(watt)
+            for i in range(len(predicted)):
+                predicted[i] = [float(entry) for entry in predicted[i][0:watt_size]]
+            predicted = np.stack(predicted)
+            MSE_laser = ((predicted[0]-real[0])**2+(predicted[1]-real[1])**2+(predicted[2]-real[2])**2)/3
             
+            MSE_E_P = float(MSE_E_P)
+            MSE_laser = float(MSE_laser)
+            if MSE_E_P >= 0.1:
+                buckets[round(MSE_laser/0.1)-1] += 1
+                bucket_totals[round(MSE_laser/0.1)-1] +=1
+            if MSE_E_P < 0.1:
+                bucket_totals[round(MSE_laser/0.1)-1] += 1
+
+            params_list.append(MSE_laser)
+
+            MSE_list.append(MSE_E_P)
+                
+
+            
+    print("Emiss Std")
+    print(np.std(MSE_list))
+    print(np.mean(MSE_list))
+    
+    print("Param Std")
+    print(np.std(params_list))
+    print(np.mean(params_list))
+    fig = plt.figure(1)
+    fig.clf()
+    ax = fig.add_subplot(1, 1, 1)
+    c = np.linspace(0, 10, len(params_list))
+    cmap = cm.jet
+    s = [4 for n in range(len(params_list))]
+    ax.scatter(params_list, MSE_list, alpha = 0.1, s = s, c = c, cmap = cmap)
+    bucket_x = [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95]
+    bucket_y = [0,0,0,0,0,0,0,0,0,0]
+    for i in range(10):
+        if bucket_totals[i] == 0:
+            bucket_y[i] = 0
+        else:
+            bucket_y[i] = buckets[i]/bucket_totals[i]
+    plt.bar(bucket_x, bucket_y, align = "center", alpha = 0.3, width = 0.1)
+    plt.title("Laser Params vs Emiss")
+    plt.xlabel("Laser Parameter Residuals")
+    plt.ylabel("Emissivity Residuals")
+    # plt.annotate("r-squared = {:.3f}".format(r_value), (0, 1))
+    plt.savefig('tempEPgraphBuckets.png')
         # BEST CODE
         # best_index = 0
         # best_MSE = 10000
@@ -287,25 +323,6 @@ if predvsideal == True:
         # plt.savefig('vs_training_best'+str(i_run_index)+'.png', dpi = 300)
 
 
-    print("Emiss Std")
-    print(np.std(MSE_list))
-    print(np.mean(MSE_list))
-    
-    print("Param Std")
-    print(np.std(params_list))
-    print(np.mean(params_list))
-    fig = plt.figure(1)
-    fig.clf()
-    ax = fig.add_subplot(1, 1, 1)
-    c = np.linspace(0, 10, len(params_list))
-    cmap = cm.jet
-    s = [4 for n in range(len(params_list))]
-    ax.scatter(params_list, MSE_list, alpha = 0.1, s = s, c = c, cmap = cmap)
-    plt.title("Laser Params vs Emiss")
-    plt.xlabel("Laser Parameter Residuals")
-    plt.ylabel("Emissivity Residuals")
-    # plt.annotate("r-squared = {:.3f}".format(r_value), (0, 1))
-    plt.savefig('tempEPgraphBuckets.png')
 
 Laser_E_P_list = []
 Laser_E_M_list = []
@@ -320,7 +337,7 @@ print("start")
 
 secondrun = False
 if secondrun == True:
-    for i_run_index in range(0, 400, 40):
+    for i_run_index in range(0, 400, 10):
         # rand_index = random.randint(1,399)
         # old_emiss = np.flip(np.array(real_emissivity[rand_index].cpu()))
         # first_emiss = float(old_emiss[0])
