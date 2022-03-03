@@ -13,34 +13,30 @@ from torch.utils.data import DataLoader, TensorDataset
 
 import data
 from forwards import ForwardModel
-from utils import Stage, rmse, split
+from utils import Config, Stage, rmse, split
 
 
 class BackwardDataModule(pl.LightningDataModule):
-    def __init__(self, batch_size: int, use_cache: bool = True) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
-        self.batch_size = batch_size
-        self.use_cache = use_cache
+        self.config = config
+        self.batch_size = self.config["backward_batch_size"]
 
     def setup(self, stage: Optional[str]) -> None:
 
-        output, input = data.get_data(self.use_cache)
+        output, input = data.get_data(self.config["use_cache"])
 
         splits = split(len(input))
-        self.train = TensorDataset(
-            input[splits["train"].start : splits["train"].stop],
-            output[splits["train"].start : splits["train"].stop],
-        )
-        self.val = TensorDataset(
-            input[splits["val"].start : splits["val"].stop],
-            output[splits["val"].start : splits["val"].stop],
-        )
-        self.test = TensorDataset(
-            input[splits["test"].start : splits["test"].stop],
-            output[splits["test"].start : splits["test"].stop],
-        )
 
-    def train_dataloader(self):
+        self.train, self.val, self.test = [
+            TensorDataset(
+                input[splits[s].start : splits[s].stop],
+                output[splits[s].start : splits[s].stop],
+            )
+            for s in ("train", "val", "test")
+        ]
+
+    def train_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.train,
             batch_size=self.batch_size,
@@ -49,7 +45,7 @@ class BackwardDataModule(pl.LightningDataModule):
             pin_memory=True,
         )
 
-    def val_dataloader(self):
+    def val_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.val,
             batch_size=self.batch_size,
@@ -58,7 +54,7 @@ class BackwardDataModule(pl.LightningDataModule):
             num_workers=16,
         )
 
-    def test_dataloader(self):
+    def test_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.test,
             batch_size=self.batch_size,
@@ -71,12 +67,12 @@ class BackwardDataModule(pl.LightningDataModule):
 class BackwardModel(pl.LightningModule):
     def __init__(
         self,
+        config: Config,
         forward_model: Optional[ForwardModel] = None,
-        kl_coeff: float = 1.0,
     ) -> None:
         super().__init__()
         # self.save_hyperparameters()
-        self.kl_coeff = kl_coeff
+        self.config = config
         if forward_model is None:
             self.forward_model = None
         else:
@@ -84,19 +80,19 @@ class BackwardModel(pl.LightningModule):
             self.forward_model.freeze()
 
         self.encoder = nn.Sequential(
-            nn.LazyConv1d(2 ** 11, kernel_size=1),
+            nn.LazyConv1d(2**11, kernel_size=1),
             nn.GELU(),
             nn.Dropout(0.5),
-            nn.LazyConv1d(2 ** 12, kernel_size=1),
+            nn.LazyConv1d(2**12, kernel_size=1),
             nn.GELU(),
             nn.Dropout(0.5),
-            nn.LazyConv1d(2 ** 13, kernel_size=1),
+            nn.LazyConv1d(2**13, kernel_size=1),
             nn.GELU(),
             nn.Dropout(0.5),
             nn.Flatten(),
         )
 
-        Z = 30
+        Z = self.config["latent_space_size"]
         self.mean_head = nn.LazyLinear(Z)
         self.log_var_head = nn.LazyLinear(Z)
 
@@ -109,7 +105,7 @@ class BackwardModel(pl.LightningModule):
         self.discrete_head = nn.LazyLinear(12)
         # XXX this call *must* happen to initialize the lazy layers
         # TODO fix
-        _dummy_input = torch.rand(2, 821, 1)
+        _dummy_input = torch.rand(2, self.config["num_wavelens"], 1)
         self.forward(_dummy_input)
 
     def forward(self, x, mode: Stage = "train"):
@@ -154,12 +150,13 @@ class BackwardModel(pl.LightningModule):
                 y_loss = rmse(y_pred, y)
                 out["pred_loss"].append(y_loss)
                 kl_loss = (
-                    self.kl_coeff
+                    self.config["kl_coeff"]
                     * kl_divergence(
                         dist,
                         Normal(
                             torch.zeros_like(dist.mean),
-                            torch.ones_like(dist.variance) / 50,
+                            self.config["kl_variance_coeff"]
+                            * torch.ones_like(dist.variance),
                         ),
                     ).mean()
                 )
@@ -184,11 +181,13 @@ class BackwardModel(pl.LightningModule):
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
             kl_loss = (
-                self.kl_coeff
+                self.config["kl_coeff"]
                 * kl_divergence(
                     dist,
                     Normal(
-                        torch.zeros_like(dist.mean), torch.ones_like(dist.variance) / 50
+                        torch.zeros_like(dist.mean),
+                        self.config["kl_variance_coeff"]
+                        * torch.ones_like(dist.variance),
                     ),
                 ).mean()
             )
@@ -225,11 +224,13 @@ class BackwardModel(pl.LightningModule):
             y_loss = rmse(y_pred, y)
 
             kl_loss = (
-                self.kl_coeff
+                self.config["kl_coeff"]
                 * kl_divergence(
                     dist,
                     Normal(
-                        torch.zeros_like(dist.mean), torch.ones_like(dist.variance) / 50
+                        torch.zeros_like(dist.mean),
+                        self.config["kl_variance_coeff"]
+                        * torch.ones_like(dist.variance),
                     ),
                 ).mean()
             )
@@ -265,11 +266,13 @@ class BackwardModel(pl.LightningModule):
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
             kl_loss = (
-                self.kl_coeff
+                self.config["kl_coeff"]
                 * kl_divergence(
                     dist,
                     Normal(
-                        torch.zeros_like(dist.mean), torch.ones_like(dist.variance) / 50
+                        torch.zeros_like(dist.mean),
+                        self.config["kl_variance_coeff"]
+                        * torch.ones_like(dist.variance),
                     ),
                 ).mean()
             )
@@ -294,4 +297,4 @@ class BackwardModel(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=1e-6)
+        return torch.optim.AdamW(self.parameters(), lr=self.config["backward_lr"])
