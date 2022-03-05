@@ -16,6 +16,7 @@ from torch import Tensor
 from backwards import BackwardModel
 from data import BackwardDataModule, ForwardDataModule, StepTestDataModule
 from forwards import ForwardModel
+from nngraph import graph
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -198,11 +199,14 @@ backward_trainer.test(
     datamodule=backward_data_module,
 )
 
-for i in range(150):
-    preds: List[Tensor] = backward_trainer.predict(
-        model=backward_model,
-        ckpt_path=backward_checkpoint_cb.best_model_path,
-        datamodule=backward_data_module,
-        return_predictions=True,
-    )
-    torch.save(preds, f"src/preds_i_validation/preds_{i}_validation")
+preds: List[Tensor] = backward_trainer.predict(
+    model=backward_model,
+    ckpt_path=backward_checkpoint_cb.best_model_path,
+    datamodule=backward_data_module,
+    return_predictions=True,
+)
+torch.save(preds, f"src/preds_i_validation/preds_0_validation")
+
+# residuals is param vs emiss residuals, preds vs true is the graph of one true emiss vs 20 vae predicitons
+# index str precedes all saved image files (f'{index_str}_graph_buckets.png' and f'{index_str}_vs_training_best_{i_run_index}.png')
+graph(residualsflag = True, predsvstrueflag = True, index_str = "default")
