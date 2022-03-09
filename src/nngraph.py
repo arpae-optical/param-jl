@@ -17,11 +17,11 @@ def unnormalize(normed, min, max):
     return normed*(max-min)+min
 
 
-def graph(residualsflag, predsvstrueflag, index_str = "default"):
+def graph(residualsflag, predsvstrueflag, index_str = "default", target_str = "0"):
     #importing the data
     wavelength = torch.load(Path("wavelength.pt"))
     wavelength = np.flip(np.array(wavelength.cpu())[0])
-    preds = torch.load(Path(f"src/preds_0_validation"))
+    preds = torch.load(Path(f"src/preds_{target_str}_validation"))
     preds = preds[0]
     real_laser = preds["true_params"]
     real_emissivity = preds["true_emiss"]
