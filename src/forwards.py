@@ -8,26 +8,30 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from utils import Config, rmse
+
 
 class ForwardModel(pl.LightningModule):
-    def __init__(self, num_wavelens=821):
+    def __init__(self, config: Config):
         super().__init__()
+        self.save_hyperparameters()
+        self.config = config
         # self.save_hyperparameters()
         self.model = nn.Sequential(
-            nn.LazyConv1d(2 ** 11, kernel_size=1),
+            nn.LazyConv1d(2**11, kernel_size=1),
             nn.GELU(),
             nn.Dropout(0.5),
             nn.LazyBatchNorm1d(),
-            nn.LazyConv1d(2 ** 12, kernel_size=1),
+            nn.LazyConv1d(2**12, kernel_size=1),
             nn.GELU(),
             nn.Dropout(0.5),
             nn.LazyBatchNorm1d(),
-            nn.LazyConv1d(2 ** 13, kernel_size=1),
+            nn.LazyConv1d(2**13, kernel_size=1),
             nn.GELU(),
             nn.Dropout(0.5),
             nn.LazyBatchNorm1d(),
             nn.Flatten(),
-            nn.LazyLinear(821),
+            nn.LazyLinear(self.config["num_wavelens"]),
             nn.Sigmoid(),
         )
 
@@ -64,4 +68,4 @@ class ForwardModel(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=1e-6)
+        return torch.optim.AdamW(self.parameters(), lr=self.config["forward_lr"])

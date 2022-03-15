@@ -205,6 +205,7 @@ def main(config: Config) -> None:
     params_str = f"pred_iter_{pred_iters}_latent_size_{latent}_k1_variance_{variance}"
     save_str = f"src/{params_str}"
 #
+
     for i in range(config["prediction_iters"]):
         preds: List[Tensor] = backward_trainer.predict(
             model=backward_model,
@@ -243,7 +244,6 @@ config: Config = {
 }
 
 
-
 for i in range(30):
     # The `hasattr` lets us use Ray Tune just to provide hyperparameters.
     try:
@@ -258,7 +258,3 @@ for i in range(30):
         except:
             continue
         continue
-
-
-# residuals is param vs emiss residuals, preds vs true is the graph of one true emiss vs 20 vae predicitons
-# index str precedes all saved image files (f'{index_str}_graph_buckets.png' and f'{index_str}_vs_training_best_{i_run_index}.png')

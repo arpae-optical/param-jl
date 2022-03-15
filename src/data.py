@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
 import utils
-from utils import Stage, rmse, split
+from utils import Config, Stage, rmse, split
 
 LaserParams, Emiss = torch.FloatTensor, torch.FloatTensor
 
@@ -140,31 +140,26 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
 class ForwardDataModule(pl.LightningDataModule):
     def __init__(
         self,
-        batch_size: int,
-        use_cache: bool = True,
+        config: Config,
     ) -> None:
         super().__init__()
-        self.batch_size = batch_size
-        self.use_cache = use_cache
+        self.config = config
+        self.batch_size = self.config["forward_batch_size"]
 
     def setup(self, stage: Optional[str]) -> None:
 
-        input, output = get_data(self.use_cache)
+        input, output = get_data(self.config["use_cache"])
         splits = split(len(input))
-        self.train = TensorDataset(
-            input[splits["train"].start : splits["train"].stop],
-            output[splits["train"].start : splits["train"].stop],
-        )
-        self.val = TensorDataset(
-            input[splits["val"].start : splits["val"].stop],
-            output[splits["val"].start : splits["val"].stop],
-        )
-        self.test = TensorDataset(
-            input[splits["test"].start : splits["test"].stop],
-            output[splits["test"].start : splits["test"].stop],
-        )
 
-    def train_dataloader(self):
+        self.train, self.val, self.test = [
+            TensorDataset(
+                input[splits[s].start : splits[s].stop],
+                output[splits[s].start : splits[s].stop],
+            )
+            for s in ("train", "val", "test")
+        ]
+
+    def train_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.train,
             batch_size=self.batch_size,
@@ -173,7 +168,7 @@ class ForwardDataModule(pl.LightningDataModule):
             pin_memory=True,
         )
 
-    def val_dataloader(self):
+    def val_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.val,
             batch_size=self.batch_size,
@@ -182,7 +177,7 @@ class ForwardDataModule(pl.LightningDataModule):
             num_workers=16,
         )
 
-    def test_dataloader(self):
+    def test_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.test,
             batch_size=self.batch_size,
@@ -193,30 +188,26 @@ class ForwardDataModule(pl.LightningDataModule):
 
 
 class BackwardDataModule(pl.LightningDataModule):
-    def __init__(self, batch_size: int, use_cache: bool = True) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
-        self.batch_size = batch_size
-        self.use_cache = use_cache
+        self.config = config
+        self.batch_size = self.config["backward_batch_size"]
 
     def setup(self, stage: Optional[str]) -> None:
 
-        output, input = get_data(self.use_cache)
+        output, input = get_data(self.config["use_cache"])
 
         splits = split(len(input))
-        self.train = TensorDataset(
-            input[splits["train"].start : splits["train"].stop],
-            output[splits["train"].start : splits["train"].stop],
-        )
-        self.val = TensorDataset(
-            input[splits["val"].start : splits["val"].stop],
-            output[splits["val"].start : splits["val"].stop],
-        )
-        self.test = TensorDataset(
-            input[splits["test"].start : splits["test"].stop],
-            output[splits["test"].start : splits["test"].stop],
-        )
 
-    def train_dataloader(self):
+        self.train, self.val, self.test = [
+            TensorDataset(
+                input[splits[s].start : splits[s].stop],
+                output[splits[s].start : splits[s].stop],
+            )
+            for s in ("train", "val", "test")
+        ]
+
+    def train_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.train,
             batch_size=self.batch_size,
@@ -225,7 +216,7 @@ class BackwardDataModule(pl.LightningDataModule):
             pin_memory=True,
         )
 
-    def val_dataloader(self):
+    def val_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.val,
             batch_size=self.batch_size,
@@ -234,7 +225,7 @@ class BackwardDataModule(pl.LightningDataModule):
             num_workers=16,
         )
 
-    def test_dataloader(self):
+    def test_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.test,
             batch_size=self.batch_size,
@@ -243,7 +234,7 @@ class BackwardDataModule(pl.LightningDataModule):
             num_workers=16,
         )
 
-    def predict_dataloader(self):
+    def predict_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.val,
             batch_size=self.batch_size,
@@ -252,6 +243,7 @@ class BackwardDataModule(pl.LightningDataModule):
             num_workers=16,
         )
 
+
 class StepTestDataModule(pl.LightningDataModule):
     def __init__(self) -> None:
         super().__init__()
@@ -259,7 +251,7 @@ class StepTestDataModule(pl.LightningDataModule):
     def setup(self, stage: Optional[str]) -> None:
         self.test = TensorDataset(utils.step_tensor())
 
-    def predict_dataloader(self):
+    def predict_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.test,
             batch_size=1_000,
@@ -269,45 +261,46 @@ class StepTestDataModule(pl.LightningDataModule):
         )
 
 
-def parse_entry(filename: os.PathLike) -> None:
-    pattern = re.compile("Power_(\d)_(\d)_W_Speed_(\d+)_mm_s_Spacing_(\d+)_um.txt")
-    m = pattern.match(filename.name)
-    if m is None:
-        return
-    power1, power2, x_speed, y_spacing = m[1], m[2], m[3], m[4]
-    x_speed = float(x_speed)
-    y_spacing = float(y_spacing)
-    power = int(power1) + int(power2) * 10 ** -1
-    raw_data = pd.read_csv(
-        filename, header=None, names=["wavelens", "emisses"], delim_whitespace=True
-    )
-    wavelens = raw_data.wavelens
-    emisses = raw_data.emisses
-    # emissivity_averaged_over_wavelength = ...
-    entry = {
-        "laser_repetition_rate_kHz": 100,
-        "laser_wavelength_nm": 1030,
-        "laser_polarization": "p-pol",
-        "laser_steering_equipment": "Galvano scanner",
-        "laser_hardware_model": "s-Pulse (Amplitude)",
-        "substrate_details": "SS foil with 0.5 mm thickness (GF90624180-20EA)",
-        "laser_power_W": power,
-        "laser_scanning_speed_x_dir_mm_per_s": x_speed,
-        "laser_scanning_line_spacing_y_dir_micron": y_spacing,
-        "substrate_material": "stainless_steel",
-        "emissivity_spectrum": [
-            {"wavelength_micron": w, "normal_emissivity": e}
-            for w, e in zip(wavelens, emisses)
-        ],
-        "emissivity_averaged_over_frequency": sum(emisses) / len(emisses),
-    }
-    client = pymongo.MongoClient(
-        "mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt"
-    )
-    db = client.propopt.laser_samples2
-    db.insert(entry)
+def parse_all() -> None:
+    """For converting Minok's raw data."""
 
+    def parse_entry(filename: Path) -> None:
+        pattern = re.compile(r"Power_(\d)_(\d)_W_Speed_(\d+)_mm_s_Spacing_(\d+)_um.txt")
+        m = pattern.match(filename.name)
+        if m is None:
+            return
+        power1, power2, x_speed, y_spacing = m[1], m[2], m[3], m[4]
+        x_speed = float(x_speed)
+        y_spacing = float(y_spacing)
+        power = int(power1) + int(power2) * 10**-1
+        raw_data = pd.read_csv(
+            filename, header=None, names=["wavelens", "emisses"], delim_whitespace=True
+        )
+        wavelens = raw_data.wavelens
+        emisses = raw_data.emisses
+        # emissivity_averaged_over_wavelength = ...
+        entry = {
+            "laser_repetition_rate_kHz": 100,
+            "laser_wavelength_nm": 1030,
+            "laser_polarization": "p-pol",
+            "laser_steering_equipment": "Galvano scanner",
+            "laser_hardware_model": "s-Pulse (Amplitude)",
+            "substrate_details": "SS foil with 0.5 mm thickness (GF90624180-20EA)",
+            "laser_power_W": power,
+            "laser_scanning_speed_x_dir_mm_per_s": x_speed,
+            "laser_scanning_line_spacing_y_dir_micron": y_spacing,
+            "substrate_material": "stainless_steel",
+            "emissivity_spectrum": [
+                {"wavelength_micron": w, "normal_emissivity": e}
+                for w, e in zip(wavelens, emisses)
+            ],
+            "emissivity_averaged_over_frequency": sum(emisses) / len(emisses),
+        }
+        client = pymongo.MongoClient(
+            "mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt"
+        )
+        db = client.propopt.laser_samples2
+        db.insert(entry)
 
-def parse_all():
     for p in Path("/home/alok/minok_ml_data").rglob("*.txt"):
         parse_entry(p)

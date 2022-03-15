@@ -7,14 +7,13 @@ import matplotlib.cm as cm
 from typing import Dict, Literal, Mapping, Optional
 from math import floor
 import random
-#from sklearn.neighbors import NearestNeighbors
-#from sklearn.metrics import mean_squared_error
-#from torch._C import UnionType
-#from scipy import stat
+
+# from sklearn.neighbors import NearestNeighbors
+# from sklearn.metrics import mean_squared_error
+# from torch._C import UnionType
+# from scipy import stat
 import utils
 
-def unnormalize(normed, min, max):
-    return normed*(max-min)+min
 
 
 def graph(residualsflag, predsvstrueflag, index_str = "default", target_str = "0"):
@@ -417,6 +416,8 @@ def graph(residualsflag, predsvstrueflag, index_str = "default", target_str = "0
     # plt.plot(x1,y1,'-r')
 
 
+# max_FoMM = 1.5
+# cutoff_adjusted_max = 1
 
         # max_FoMM = 1.5
         # cutoff_adjusted_max = 1
@@ -461,3 +462,15 @@ def graph(residualsflag, predsvstrueflag, index_str = "default", target_str = "0
         #             print(new_score)
                 
 
+#         if new_score > max_FoMM:
+#             max_FoMM = new_score
+#             # print("Not best")
+#             # print(cutoff_adjusted_score)
+#             print("wavelen cutoff")
+#             print(wavelen_cutoff)
+#             print("wavelen index")
+#             print(wavelen_index)
+#             print("index")
+#             print(i)
+#             print("new score")
+#             print(new_score)

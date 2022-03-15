@@ -17,6 +17,8 @@ wandb = "*"
 test-tube = "*"
 sklearn = "*"
 pudb = "*"
+ray-lightning = "*"
+ray = {extras = ["tune"], version = "*"}
 
 [dev-packages]
 
