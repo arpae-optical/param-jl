@@ -14,6 +14,7 @@ from utils import Config, rmse
 class ForwardModel(pl.LightningModule):
     def __init__(self, config: Config):
         super().__init__()
+        self.save_hyperparameters()
         self.config = config
         # self.save_hyperparameters()
         self.model = nn.Sequential(

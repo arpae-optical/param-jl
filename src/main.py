@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import sys
 import argparse
 import os
+import sys
 from pathlib import Path
 from typing import List, Optional, TypedDict
 
 import pytorch_lightning as pl
 import torch
+import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from ray import tune
@@ -95,7 +96,6 @@ args = parser.parse_args()
 
 
 def main(config: Config) -> None:
-    ray_plugin = RayPlugin(num_workers=1, num_cpus_per_worker=64, use_gpu=True)
 
     forward_trainer = pl.Trainer(
         max_epochs=config["forward_num_epochs"],
@@ -118,13 +118,10 @@ def main(config: Config) -> None:
                 dirpath="weights/forward",
                 save_top_k=1,
                 mode="min",
+                save_last=True,
             ),
             pl.callbacks.progress.TQDMProgressBar(refresh_rate=100),
-            TuneReportCallback(
-                {"forward_val_loss": "forward/val/loss"}, on="validation_end"
-            ),
         ],
-        plugins=[ray_plugin],
         gpus=1,
         precision=32,
         # overfit_batches=1,
@@ -153,13 +150,10 @@ def main(config: Config) -> None:
                 dirpath="weights/backward",
                 save_top_k=1,
                 mode="min",
+                save_last=True,
             ),
             pl.callbacks.progress.TQDMProgressBar(refresh_rate=10),
-            TuneReportCallback(
-                {"backward_val_loss": "backward/val/loss"}, on="validation_end"
-            ),
         ],
-        plugins=[ray_plugin],
         gpus=1,
         precision=32,
         weights_summary="full",
@@ -180,7 +174,12 @@ def main(config: Config) -> None:
 
         forward_trainer.test(
             model=forward_model,
-            ckpt_path="best",
+            ckpt_path=str(
+                max(
+                    Path("weights/forward").glob("*.ckpt"),
+                    key=os.path.getctime,
+                )
+            ),
             datamodule=forward_data_module,
         )
         backward_model = BackwardModel(config=config, forward_model=forward_model)
@@ -191,32 +190,44 @@ def main(config: Config) -> None:
         backward_trainer.fit(model=backward_model, datamodule=backward_data_module)
     backward_trainer.test(
         model=backward_model,
-        ckpt_path="best",
+        ckpt_path=str(
+            max(
+                Path("weights/backward").glob("*.ckpt"),
+                key=os.path.getctime,
+            )
+        ),
         datamodule=backward_data_module,
     )
 
     for i in range(config["prediction_iters"]):
         preds: List[Tensor] = backward_trainer.predict(
             model=backward_model,
-            ckpt_path="best",
+            ckpt_path=str(
+                max(
+                    Path("weights/backward").glob("*.ckpt"),
+                    key=os.path.getctime,
+                )
+            ),
             datamodule=backward_data_module,
             return_predictions=True,
         )
         torch.save(preds, f"src/preds_i_validation/preds_{i}_validation")
+    wandb.finish()
 
 
 # The `or` idiom allows overriding values from the command line.
 config: Config = {
-    "forward_lr": tune.loguniform(1e-7, 1e-4),
-    "backward_lr": tune.loguniform(1e-7, 1e-4),
+    # "forward_lr": tune.loguniform(1e-7, 1e-4),
+    "forward_lr": 1e-6,
+    "backward_lr": tune.loguniform(1e-6, 1e-5),
     "latent_space_size": tune.qlograndint(2**5, 2**10, 1),
-    "forward_num_epochs": args.forward_num_epochs or tune.choice([3000]),
-    "backward_num_epochs": args.backward_num_epochs or tune.choice([1600, 2500]),
+    "forward_num_epochs": args.forward_num_epochs or tune.choice([1600]),
+    "backward_num_epochs": args.backward_num_epochs or tune.choice([2500]),
     "forward_batch_size": args.forward_batch_size or tune.choice([2**9]),
     "backward_batch_size": args.backward_batch_size or tune.choice([2**9]),
     "use_cache": args.use_cache,
-    "kl_coeff": tune.loguniform(2**-3, 2**0),
-    "kl_variance_coeff": tune.loguniform(2**-24, 2**0),
+    "kl_coeff": tune.loguniform(2**-1, 2**0),
+    "kl_variance_coeff": tune.loguniform(2**-12, 2**0),
     "num_wavelens": 821,
     "prediction_iters": args.prediction_iters,
     "use_forward": args.use_forward,
@@ -225,15 +236,17 @@ config: Config = {
 }
 
 
-# Make sure to pass in ``resources_per_trial`` using the ``get_tune_resources`` utility.
-analysis = tune.run(
-    main,
-    metric="backward_val_loss",
-    mode="min",
-    config=config,
-    num_samples=args.num_samples,
-    resources_per_trial={"gpu": 1, "cpu": 64},
-    name="tune_fwd_backward",
-)
-
-print("Best hyperparameters found were: ", analysis.best_config)
+for i in range(30):
+    # The `hasattr` lets us use Ray Tune just to provide hyperparameters.
+    try:
+        concrete_config: Config = Config(
+            {k: (v.sample() if hasattr(v, "sample") else v) for k, v in config.items()}
+        )
+        main(concrete_config)
+    except:
+        try:
+            # Don't want experiments bleeding into each other.
+            wandb.finish()
+        except:
+            continue
+        continue

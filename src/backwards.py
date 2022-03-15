@@ -19,6 +19,7 @@ from utils import Config, Stage, rmse, split
 class BackwardDataModule(pl.LightningDataModule):
     def __init__(self, config: Config) -> None:
         super().__init__()
+        self.save_hyperparameters()
         self.config = config
         self.batch_size = self.config["backward_batch_size"]
 
