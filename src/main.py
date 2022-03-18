@@ -221,7 +221,7 @@ def main(config: Config) -> None:
         torch.save(preds, save_str)
     wandb.finish()
 
-    graph(residualsflag = True, predsvstrueflag = True, index_str = params_str, target_str = save_str)
+    # graph(residualsflag = True, predsvstrueflag = True, index_str = params_str, target_str = save_str)
 
 # The `or` idiom allows overriding values from the command line.
 config: Config = {

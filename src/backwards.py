@@ -2,67 +2,23 @@
 from __future__ import annotations
 
 import random
+from pathlib import Path
 from typing import Optional
 
+import matplotlib.pyplot as plt
+import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
+import wandb
 from torch import nn
 from torch.distributions import Normal, kl_divergence
 from torch.utils.data import DataLoader, TensorDataset
-import nngraph
+
 import data
+import nngraph
 from forwards import ForwardModel
 from utils import Config, Stage, rmse, split
-
-
-class BackwardDataModule(pl.LightningDataModule):
-    def __init__(self, config: Config) -> None:
-        super().__init__()
-        self.save_hyperparameters()
-        self.config = config
-        self.batch_size = self.config["backward_batch_size"]
-
-    def setup(self, stage: Optional[str]) -> None:
-
-        output, input = data.get_data(self.config["use_cache"])
-
-        splits = split(len(input))
-
-        self.train, self.val, self.test = [
-            TensorDataset(
-                input[splits[s].start : splits[s].stop],
-                output[splits[s].start : splits[s].stop],
-            )
-            for s in ("train", "val", "test")
-        ]
-
-    def train_dataloader(self) -> DataLoader:
-        return DataLoader(
-            dataset=self.train,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=16,
-            pin_memory=True,
-        )
-
-    def val_dataloader(self) -> DataLoader:
-        return DataLoader(
-            dataset=self.val,
-            batch_size=self.batch_size,
-            shuffle=False,
-            pin_memory=True,
-            num_workers=16,
-        )
-
-    def test_dataloader(self) -> DataLoader:
-        return DataLoader(
-            dataset=self.test,
-            batch_size=self.batch_size,
-            shuffle=False,
-            pin_memory=True,
-            num_workers=16,
-        )
 
 
 class BackwardModel(pl.LightningModule):
@@ -194,6 +150,31 @@ class BackwardModel(pl.LightningModule):
                     ),
                 ).mean()
             )
+
+            if np.random.rand() < 0.1:
+                for rand_idx in np.random.randint(
+                    0, self.config["backward_batch_size"], 3
+                ):
+
+                    fig, ax = plt.subplots()
+                    ax.scatter(
+                        self.wavelens.detach().cpu(),
+                        y_pred[rand_idx].detach().cpu(),
+                        c="r",
+                    )
+                    ax.scatter(
+                        self.wavelens.detach().cpu(), y[rand_idx].detach().cpu(), c="g"
+                    )
+                    ax.set_xlabel("Wavelen (μm)")
+                    ax.set_ylabel("Emissivity")
+                    ax.legend(["Pred", "Real"])
+                    ax.set_title("Random emiss comparison")
+                    # self.logger[0].experiment.log(
+                    #     # {"global_step": self.trainer.global_step, 'chart': wandb.Image(fig)},
+                    #     {"chart": wandb.Image(fig)},
+                    # )
+                    plt.close(fig)
+
             self.log(
                 "backward/train/kl/loss",
                 kl_loss,
@@ -206,9 +187,10 @@ class BackwardModel(pl.LightningModule):
                 prog_bar=True,
             )
             loss = y_loss + kl_loss
-        nngraph.emiss_error_graph(y_pred, y, "train_step.png")
+        # nngraph.emiss_error_graph(y_pred, y, "train_step.png")
         self.log(f"backward/train/loss", loss, prog_bar=True)
         # self.log_image(key="backwards_error_graphs", images=["train_step.png"],step=self.global_step)
+
         return loss
 
     def validation_step(self, batch, batch_nb):
@@ -239,6 +221,32 @@ class BackwardModel(pl.LightningModule):
                     ),
                 ).mean()
             )
+
+            if np.random.rand() < 0.1:
+                for rand_idx in np.random.randint(
+                    0, self.config["backward_batch_size"], 3
+                ):
+
+                    fig, ax = plt.subplots()
+                    ax.scatter(
+                        self.wavelens.detach().cpu(),
+                        y_pred[rand_idx].detach().cpu(),
+                        c="r",
+                    )
+                    ax.scatter(
+                        self.wavelens.detach().cpu(), y[rand_idx].detach().cpu(), c="g"
+                    )
+                    ax.set_xlabel("Wavelen (μm)")
+                    ax.set_ylabel("Emissivity")
+                    ax.legend(["Pred", "Real"])
+                    ax.set_title("Random emiss comparison")
+                    # self.logger[0].experiment.log(
+                    #     # {"global_step": self.trainer.global_step, 'chart': wandb.Image(fig)},
+                    #     # step=self.trainer.global_step,
+                    #     {"chart": wandb.Image(fig)},
+                    # )
+                    plt.close(fig)
+
             self.log(
                 "backward/train/kl/loss",
                 kl_loss,
@@ -252,7 +260,7 @@ class BackwardModel(pl.LightningModule):
             )
             loss = y_loss + kl_loss
         self.log(f"backward/val/loss", loss, prog_bar=True)
-        nngraph.emiss_error_graph(y_pred, y, "val_step.png")
+        # nngraph.emiss_error_graph(y_pred, y, "val_step.png")
         # self.log_image(key="val_error_graphs", images=["val_step.png"])
         return loss
 
@@ -283,6 +291,31 @@ class BackwardModel(pl.LightningModule):
                     ),
                 ).mean()
             )
+            if np.random.rand() < 0.1:
+                for rand_idx in np.random.randint(
+                    0, self.config["backward_batch_size"], 3
+                ):
+
+                    fig, ax = plt.subplots()
+                    ax.scatter(
+                        self.wavelens.detach().cpu(),
+                        y_pred[rand_idx].detach().cpu(),
+                        c="r",
+                    )
+                    ax.scatter(
+                        self.wavelens.detach().cpu(), y[rand_idx].detach().cpu(), c="g"
+                    )
+                    ax.set_xlabel("Wavelen (μm)")
+                    ax.set_ylabel("Emissivity")
+                    ax.legend(["Pred", "Real"])
+                    ax.set_title("Random emiss comparison")
+                    # self.logger[0].experiment.log(
+                    #     # {"global_step": self.trainer.global_step, 'chart': wandb.Image(fig)},
+                    #     # step=self.trainer.global_step,
+                    #     {"chart": wandb.Image(fig)},
+                    # )
+                    plt.close(fig)
+
             self.log(
                 "backward/train/kl/loss",
                 kl_loss,
@@ -300,8 +333,8 @@ class BackwardModel(pl.LightningModule):
             torch.save(y, "emiss_true_back.pt")
             torch.save(y_pred, "emiss_pred.pt")
             torch.save(x_pred, "param_pred.pt")
-        nngraph.emiss_error_graph(y_pred, y, "test_step.png")
-        self.log_image(key="test_backwards_error_graphs", images=["test_step.png"])
+        # nngraph.emiss_error_graph(y_pred, y, "test_step.png")
+        # self.log_image(key="test_backwards_error_graphs", images=["test_step.png"])
         # self.log(f"backward/test/loss", loss, prog_bar=True)
         return loss
 
