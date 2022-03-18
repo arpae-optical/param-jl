@@ -19,6 +19,7 @@ sklearn = "*"
 pudb = "*"
 ray-lightning = "*"
 ray = {extras = ["tune"], version = "*"}
+plotly = "*"
 
 [dev-packages]
 
