@@ -204,9 +204,9 @@ class BackwardModel(pl.LightningModule):
                 prog_bar=True,
             )
             loss = y_loss + kl_loss
-        self.log(f"backward/train/loss", loss, prog_bar=True)
         nngraph.emiss_error_graph(y_pred, y, "train_step.png")
-        self.log_image(key="backwards_error_graphs", images=["train_step.png"])
+        self.log(f"backward/train/loss", loss, prog_bar=True)
+        # self.log_image(key="backwards_error_graphs", images=["train_step.png"],step=self.global_step)
         return loss
 
     def validation_step(self, batch, batch_nb):
@@ -251,7 +251,7 @@ class BackwardModel(pl.LightningModule):
             loss = y_loss + kl_loss
         self.log(f"backward/val/loss", loss, prog_bar=True)
         nngraph.emiss_error_graph(y_pred, y, "val_step.png")
-        self.log_image(key="val_error_graphs", images=["val_step.png"])
+        # self.log_image(key="val_error_graphs", images=["val_step.png"])
         return loss
 
     def test_step(self, batch, batch_nb):
@@ -300,7 +300,7 @@ class BackwardModel(pl.LightningModule):
             torch.save(x_pred, "param_pred.pt")
         nngraph.emiss_error_graph(y_pred, y, "test_step.png")
         self.log_image(key="test_backwards_error_graphs", images=["test_step.png"])
-        self.log(f"backward/test/loss", loss, prog_bar=True)
+        # self.log(f"backward/test/loss", loss, prog_bar=True)
         return loss
 
     def configure_optimizers(self):

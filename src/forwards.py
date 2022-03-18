@@ -50,8 +50,10 @@ class ForwardModel(pl.LightningModule):
         x, y = batch
         y_pred = self(x)
         loss = rmse(y_pred, y)
+        print(y_pred.shape)
+        print(y.shape)
         nngraph.emiss_error_graph(y_pred, y, "train_step.png")
-        self.log_image(key="train_forwards_error_graphs", images=["train_step.png"])
+        # self.log_image(key="train_forwards_error_graphs", images=["train_step.png"])
 
         self.log(f"forward/train/loss", loss, prog_bar=True)
         return loss
@@ -61,8 +63,10 @@ class ForwardModel(pl.LightningModule):
         y_pred = self(x)
         loss = rmse(y_pred, y)
         self.log(f"forward/val/loss", loss, prog_bar=True)
+        print(y_pred.shape)
+        print(y.shape)
         nngraph.emiss_error_graph(y_pred, y, "val_step.png")
-        self.log_image(key="val_forwards_error_graphs", images=["val_step.png"])
+        # self.log_image(key="val_forwards_error_graphs", images=["val_step.png"])
         return loss
 
     def test_step(self, batch, batch_nb):
@@ -70,8 +74,10 @@ class ForwardModel(pl.LightningModule):
         y_pred = self(x)
         loss = rmse(y_pred, y)
         self.log(f"forward/test/loss", loss, prog_bar=True)
+        print(y_pred.shape)
+        print(y.shape)
         nngraph.emiss_error_graph(y_pred, y, "test_step.png")
-        self.log_image(key="test_forwards_error_graphs", images=["test_step.png"])
+        # self.log_image(key="test_forwards_error_graphs", images=["test_step.png"])
         return loss
 
     def configure_optimizers(self):

@@ -121,16 +121,16 @@ def main(config: Config) -> None:
                 mode="min",
                 save_last=True,
             ),
-            pl.callbacks.progress.TQDMProgressBar(refresh_rate=100),
+            pl.callbacks.progress.TQDMProgressBar(refresh_rate=2),
         ],
         gpus=1,
         precision=32,
         # overfit_batches=1,
         # track_grad_norm=2,
         weights_summary="full",
-        check_val_every_n_epoch=10,
+        check_val_every_n_epoch=min(3, config["backward_num_epochs"]-1),
         gradient_clip_val=0.5,
-        log_every_n_steps=min(10, config["forward_num_epochs"]),
+        log_every_n_steps=min(3, config["forward_num_epochs"]-1),
     )
 
     backward_trainer = pl.Trainer(
@@ -158,9 +158,9 @@ def main(config: Config) -> None:
         gpus=1,
         precision=32,
         weights_summary="full",
-        check_val_every_n_epoch=10,
+        check_val_every_n_epoch=min(3, config["backward_num_epochs"]-1),
         gradient_clip_val=0.5,
-        log_every_n_steps=min(30, config["backward_num_epochs"]),
+        log_every_n_steps=min(3, config["backward_num_epochs"]-1),
     )
 
     forward_data_module = ForwardDataModule(config)
@@ -204,7 +204,7 @@ def main(config: Config) -> None:
     variance = config["kl_variance_coeff"]
     params_str = f"pred_iter_{pred_iters}_latent_size_{latent}_k1_variance_{variance}"
     save_str = f"src/{params_str}"
-#
+
 
     for i in range(config["prediction_iters"]):
         preds: List[Tensor] = backward_trainer.predict(
@@ -244,7 +244,7 @@ config: Config = {
 }
 
 
-for i in range(30):
+for i in range(1):
     # The `hasattr` lets us use Ray Tune just to provide hyperparameters.
     try:
         concrete_config: Config = Config(
