@@ -74,6 +74,8 @@ class BackwardModel(pl.LightningModule):
         super().__init__()
         # self.save_hyperparameters()
         self.config = config
+        self.wavelens = torch.load(Path("wavelength.pt"))[0]
+        self.config["num_wavelens"] = len(self.wavelens)
         if forward_model is None:
             self.forward_model = None
         else:

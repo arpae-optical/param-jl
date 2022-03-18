@@ -236,7 +236,6 @@ config: Config = {
     "use_cache": args.use_cache,
     "kl_coeff": tune.loguniform(2**-1, 2**0),
     "kl_variance_coeff": tune.loguniform(2**-12, 2**0),
-    "num_wavelens": 821,
     "prediction_iters": args.prediction_iters,
     "use_forward": args.use_forward,
     "load_forward_checkpoint": args.load_forward_checkpoint,

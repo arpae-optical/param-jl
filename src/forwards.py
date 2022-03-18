@@ -16,6 +16,8 @@ class ForwardModel(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
+        self.wavelens = torch.load(Path("wavelength.pt"))[0]
+        self.config["num_wavelens"] = len(self.wavelens)
         # self.save_hyperparameters()
         self.model = nn.Sequential(
             nn.LazyConv1d(2**11, kernel_size=1),

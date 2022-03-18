@@ -75,20 +75,20 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
                 for ex in entry["emissivity_spectrum"]
                 if (
                     (e := ex["normal_emissivity"]) != 1.0
-                    and ex["wavelength_micron"] < 12
+                    and ex["wavelength_micron"] < 5
                 )
             ]
             wavelength_plot: List[float] = [
                 ex["wavelength_micron"]
                 for ex in entry["emissivity_spectrum"]
-                if (ex["normal_emissivity"] != 1.0 and ex["wavelength_micron"] < 12)
+                if (ex["normal_emissivity"] != 1.0 and ex["wavelength_micron"] < 5)
             ]
             # Reverse to sort in ascending rather than descending order.
             emiss_plot.reverse()
             wavelength_plot.reverse()
             # drop all problematic emissivity (only 3% of data dropped)
 
-            if len(emiss_plot) != (_MANUALLY_COUNTED_LENGTH := 821) or any(
+            if len(emiss_plot) != (_MANUALLY_COUNTED_LENGTH := 519) or any(
                 not (0 <= x <= 1) for x in emiss_plot
             ):
                 continue
@@ -123,10 +123,9 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
         print(f"{emissivity.min()=}")
         print(f"{emissivity.max()=}")
 
-        # Save unnormalized data for convenience later.
+        # Save unnormalized data for convenience later. Not wavelength, since it's not used as an input and isn't normalized.
         torch.save(laser_params, Path("unnorm_laser_params.pt"))
         torch.save(emissivity, Path("unnorm_emissivity.pt"))
-        torch.save(wavelength, Path("unnorm_wavelength.pt"))
 
         laser_params /= laser_params.max(0).values
 
