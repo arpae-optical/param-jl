@@ -88,7 +88,7 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
             wavelength_plot.reverse()
             # drop all problematic emissivity (only 3% of data dropped)
 
-            if len(emiss_plot) != (_MANUALLY_COUNTED_LENGTH := 821) or any(
+            if len(emiss_plot) != (_MANUALLY_COUNTED_LENGTH := 519) or any(
                 not (0 <= x <= 1) for x in emiss_plot
             ):
                 continue

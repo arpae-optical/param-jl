@@ -191,17 +191,17 @@ class BackwardModel(pl.LightningModule):
             loss = y_loss + kl_loss
         self.log(f"backward/train/loss", loss, prog_bar=True)
         randcheck = np.random.uniform()
-        if randcheck < 0.1:
+        if randcheck < 0.05:
+            print("randomly selected, logging image")
             graph_xys = nngraph.emiss_error_graph(y_pred, y)
             graph_xs = graph_xys[6]
-            graph_ys = graph_xys[0:6]
+            graph_ys_ave = graph_xys[2:4]
             average_RMSE = graph_xys[7]
-            print("randomly selected, logging image")
-            wandb.log({f"backwards_train_graph_batch_{_batch_nb}" : wandb.plot.line_series(
+            wandb.log({"backwards_train_graph" : wandb.plot.line_series(
                     xs=graph_xs,
                     ys=graph_ys,
-                    keys=["Best RMSE prediction", "Best RMSE real", "Worst RMSE prediction", "Worst RMSE real", f"Average RMSE prediction ({average_RMSE})", "Average RMSE real"],
-                    title="Best vs Worst vs Average RMSE",
+                    keys=[f"Average RMSE prediction ({average_RMSE})", "Average RMSE real"],
+                    title="Best vs Worst vs Average RMSE, train",
                     xname="wavelength")})
 
         return loss
@@ -274,17 +274,17 @@ class BackwardModel(pl.LightningModule):
             loss = y_loss + kl_loss
         self.log(f"backward/val/loss", loss, prog_bar=True)
         randcheck = np.random.uniform()
-        if randcheck < 1:
+        if randcheck < 0.05:
+            print("randomly selected, logging image")
             graph_xys = nngraph.emiss_error_graph(y_pred, y)
             graph_xs = graph_xys[6]
-            graph_ys = graph_xys[0:6]
+            graph_ys_ave = graph_xys[2:4]
             average_RMSE = graph_xys[7]
-            print("randomly selected, logging image")
             wandb.log({"backwards_val_graph" : wandb.plot.line_series(
                     xs=graph_xs,
                     ys=graph_ys,
-                    keys=["Best RMSE prediction", "Best RMSE real", "Worst RMSE prediction", "Worst RMSE real", f"Average RMSE prediction ({average_RMSE})", "Average RMSE real"],
-                    title="Best vs Worst vs Average RMSE",
+                    keys=[f"Average RMSE prediction ({average_RMSE})", "Average RMSE real"],
+                    title="Best vs Worst vs Average RMSE, val",
                     xname="wavelength")})
 
         return loss

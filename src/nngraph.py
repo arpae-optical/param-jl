@@ -40,14 +40,14 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
 
         real_emiss_list = real_emissivity[i_run_index]
 
-        # old_emiss = predicted_emissivity[i_run_index][0:820]
+        # old_emiss = predicted_emissivity[i_run_index][0:519]
         # first_emiss = float(old_emiss[0])
         # new_emiss = np.concatenate((np.array([first_emiss for j in range(100)]), old_emiss))
         
         MSE_E_P = 0
-        for wavelen_i in range(820):
+        for wavelen_i in range(519):
             MSE_E_P += (real_emiss_list[wavelen_i] - current_list[wavelen_i]) ** 2
-        RMSE_E_P = float(MSE_E_P / 820) ** (0.5)
+        RMSE_E_P = float(MSE_E_P / 519) ** (0.5)
         RMSE_total += RMSE_E_P/50
 
         RMSE_list.append(RMSE_E_P)
@@ -61,9 +61,9 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
             worst_run_index = i_run_index
 
         MAPE = 0
-        for wavelen_i in range(820):
+        for wavelen_i in range(519):
             MAPE += abs(real_emiss_list[wavelen_i] - current_list[wavelen_i])
-        MAPE = float(MAPE / 820)
+        MAPE = float(MAPE / 519)
         MAPE_total += MAPE/50
 
     RMSE_residuals = [abs(RMSE_total - r) for r in RMSE_list]
@@ -73,50 +73,25 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
     # first_emiss = float(old_emiss[0])
     # new_emiss = np.concatenate((np.array([first_emiss for j in range(100)]), old_emiss))
     plt.scatter(
-        wavelength[0:820],
-        [0 for n in range(820)],
-        s=[0.001 for n in range(820)],
+        wavelength[0:519],
+        [0 for n in range(519)],
+        s=[0.001 for n in range(519)],
         label="Point density for reference",
     )
 
     
 
-    # plt.plot(
-    #     wavelength[0:820],
-    #     old_emiss[0:820],
-    #     c="blue",
-    #     alpha=0.1,
-    #     linewidth=2.0,
-    #     label=f"Predicted Emiss, average RMSE {round(RMSE_total/50,5)}, MAPE {round(MAPE_total/50,5)}",
-    # )
+    best_RMSE_pred = predicted_emissivity[best_run_index][0:519]
 
-    # new_emiss = real_emissivity[1]
-    # plt.plot(
-    #     wavelength[0:820],b
-    #     new_emiss[0:820],
-    #     c="black",
-    #     alpha=1,
-    #     linewidth=2.0,
-    #     label="Real Emissivity",
-    # )
+    best_RMSE_real = real_emissivity[best_run_index][0:519]
 
-    # leg = plt.legend(loc="upper right", prop={"size": 8})
+    worst_RMSE_pred = predicted_emissivity[worst_run_index][0:519]
 
-    # leg.legendHandles[0].set_alpha(1)
-    # plt.xlabel("Wavelength")
-    # plt.ylabel("Emissivity")
+    worst_RMSE_real = real_emissivity[worst_run_index][0:519]
 
-    best_RMSE_pred = predicted_emissivity[best_run_index][0:820]
+    average_RMSE_pred = predicted_emissivity[average_run_index][0:519]
 
-    best_RMSE_real = real_emissivity[best_run_index][0:820]
-
-    worst_RMSE_pred = predicted_emissivity[worst_run_index][0:820]
-
-    worst_RMSE_real = real_emissivity[worst_run_index][0:820]
-
-    average_RMSE_pred = predicted_emissivity[average_run_index][0:820]
-
-    average_RMSE_real = real_emissivity[average_run_index][0:820]
+    average_RMSE_real = real_emissivity[average_run_index][0:519]
 
     return([best_RMSE_pred, best_RMSE_real, worst_RMSE_pred, worst_RMSE_real, average_RMSE_pred, average_RMSE_real, wavelength, RMSE_total])
 
@@ -133,7 +108,7 @@ def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
     real_emissivity = preds["true_emiss"]
     predicted_emissivity = preds["pred_emiss"]
 
-    # laser indexed [vae out of 50][wavelength out of 821][params, 14]
+    # laser indexed [vae out of 50][wavelength out of 519][params, 14]
     predicted_laser = preds["params"]
 
     arbitrary_index = 20
@@ -185,14 +160,14 @@ def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
 
                 # Emiss residuals
                 j = arbitrary_vae
-                current_list = predicted_emiss_list[j][i_run_index][0:820]
+                current_list = predicted_emiss_list[j][i_run_index][0:519]
 
                 MSE_E_P = 0
-                for wavelen_i in range(820):
+                for wavelen_i in range(519):
                     MSE_E_P += (
                         real_emiss_list[wavelen_i] - current_list[wavelen_i]
                     ) ** 2
-                MSE_E_P = MSE_E_P / 820
+                MSE_E_P = MSE_E_P / 519
 
                 # Laser Param Residuals
                 watt1 = temp_real_laser.T[2:].T.cpu()
@@ -316,7 +291,7 @@ def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
 
                 # Emiss residuals
 
-                current_list = predicted_emissivity[arbitrary_vae][i_run_index][0:820]
+                current_list = predicted_emissivity[arbitrary_vae][i_run_index][0:519]
 
                 real_emiss_list = real_emissivity[i_run_index]
 
@@ -324,38 +299,38 @@ def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
                 # first_emiss = float(old_emiss[0])
                 # new_emiss = np.concatenate((np.array([first_emiss for j in range(100)]), old_emiss))
                 plt.plot(
-                    wavelength[0:820],
-                    old_emiss[0:820],
+                    wavelength[0:519],
+                    old_emiss[0:519],
                     c="blue",
                     alpha=0.1,
                     linewidth=2.0,
                 )
                 MSE_E_P = 0
-                for wavelen_i in range(820):
+                for wavelen_i in range(519):
                     MSE_E_P += (
                         real_emiss_list[wavelen_i] - current_list[wavelen_i]
                     ) ** 2
-                RMSE_E_P = float(MSE_E_P / 820) ** (0.5)
+                RMSE_E_P = float(MSE_E_P / 519) ** (0.5)
                 RMSE_total += RMSE_E_P
 
                 MAPE = 0
-                for wavelen_i in range(820):
+                for wavelen_i in range(519):
                     MAPE += abs(real_emiss_list[wavelen_i] - current_list[wavelen_i])
-                MAPE = float(MAPE / 820)
+                MAPE = float(MAPE / 519)
                 MAPE_total += MAPE
 
             old_emiss = predicted_emissivity[49][i_run_index]
             # first_emiss = float(old_emiss[0])
             # new_emiss = np.concatenate((np.array([first_emiss for j in range(100)]), old_emiss))
             plt.scatter(
-                wavelength[0:820],
-                [0 for n in range(820)],
-                s=[0.001 for n in range(820)],
+                wavelength[0:519],
+                [0 for n in range(519)],
+                s=[0.001 for n in range(519)],
                 label="Point density for reference",
             )
             plt.plot(
-                wavelength[0:820],
-                old_emiss[0:820],
+                wavelength[0:519],
+                old_emiss[0:519],
                 c="blue",
                 alpha=0.1,
                 linewidth=2.0,
@@ -364,8 +339,8 @@ def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
 
             new_emiss = real_emissivity[i_run_index]
             plt.plot(
-                wavelength[0:820],
-                new_emiss[0:820],
+                wavelength[0:519],
+                new_emiss[0:519],
                 c="black",
                 alpha=1,
                 linewidth=2.0,

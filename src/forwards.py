@@ -8,6 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 import nngraph
+import wandb
 from pathlib import Path
 from utils import Config, rmse
 
@@ -63,8 +64,19 @@ class ForwardModel(pl.LightningModule):
         y_pred = self(x)
         loss = rmse(y_pred, y)
         self.log(f"forward/val/loss", loss, prog_bar=True)
-        # nngraph.emiss_error_graph(y_pred, y, "val_step.png")
-        # self.log_image(key="val_forwards_error_graphs", images=["val_step.png"])
+        randcheck = np.random.uniform()
+        if randcheck < 1:
+            print("randomly selected, logging image")
+            graph_xys = nngraph.emiss_error_graph(y_pred, y)
+            graph_xs = graph_xys[6]
+            graph_ys_ave = graph_xys[2:4]
+            average_RMSE = graph_xys[7]
+            wandb.log({"forward_val_graph" : wandb.plot.line_series(
+                    xs=graph_xs,
+                    ys=graph_ys,
+                    keys=[f"Average RMSE prediction ({average_RMSE})", "Average RMSE real"],
+                    title="Best vs Worst vs Average RMSE, forward val",
+                    xname="wavelength")})
         return loss
 
     def test_step(self, batch, batch_nb):
@@ -72,8 +84,18 @@ class ForwardModel(pl.LightningModule):
         y_pred = self(x)
         loss = rmse(y_pred, y)
         self.log(f"forward/test/loss", loss, prog_bar=True)
-        # nngraph.emiss_error_graph(y_pred, y, "test_step.png")
-        # self.log_image(key="test_forwards_error_graphs", images=["test_step.png"])
+        if randcheck < 1:
+            print("randomly selected, logging image")
+            graph_xys = nngraph.emiss_error_graph(y_pred, y)
+            graph_xs = graph_xys[6]
+            graph_ys_ave = graph_xys[2:4]
+            average_RMSE = graph_xys[7]
+            wandb.log({"forward_test_graph" : wandb.plot.line_series(
+                    xs=graph_xs,
+                    ys=graph_ys,
+                    keys=[f"Average RMSE prediction ({average_RMSE})", "Average RMSE real"],
+                    title="Best vs Worst vs Average RMSE, forward test",
+                    xname="wavelength")})
         return loss
 
     def configure_optimizers(self):
