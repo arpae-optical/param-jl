@@ -17,6 +17,8 @@ from torch.utils.data import DataLoader, TensorDataset
 
 import data
 import nngraph
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 from forwards import ForwardModel
 from utils import Config, Stage, rmse, split
 
@@ -187,9 +189,20 @@ class BackwardModel(pl.LightningModule):
                 prog_bar=True,
             )
             loss = y_loss + kl_loss
-        # nngraph.emiss_error_graph(y_pred, y, "train_step.png")
         self.log(f"backward/train/loss", loss, prog_bar=True)
-        # self.log_image(key="backwards_error_graphs", images=["train_step.png"],step=self.global_step)
+        randcheck = np.random.uniform()
+        if randcheck < 0.1:
+            graph_xys = nngraph.emiss_error_graph(y_pred, y)
+            graph_xs = graph_xys[6]
+            graph_ys = graph_xys[0:6]
+            average_RMSE = graph_xys[7]
+            print("randomly selected, logging image")
+            wandb.log({f"backwards_train_graph_batch_{_batch_nb}" : wandb.plot.line_series(
+                    xs=graph_xs,
+                    ys=graph_ys,
+                    keys=["Best RMSE prediction", "Best RMSE real", "Worst RMSE prediction", "Worst RMSE real", f"Average RMSE prediction ({average_RMSE})", "Average RMSE real"],
+                    title="Best vs Worst vs Average RMSE",
+                    xname="wavelength")})
 
         return loss
 
@@ -260,8 +273,20 @@ class BackwardModel(pl.LightningModule):
             )
             loss = y_loss + kl_loss
         self.log(f"backward/val/loss", loss, prog_bar=True)
-        # nngraph.emiss_error_graph(y_pred, y, "val_step.png")
-        # self.log_image(key="val_error_graphs", images=["val_step.png"])
+        randcheck = np.random.uniform()
+        if randcheck < 1:
+            graph_xys = nngraph.emiss_error_graph(y_pred, y)
+            graph_xs = graph_xys[6]
+            graph_ys = graph_xys[0:6]
+            average_RMSE = graph_xys[7]
+            print("randomly selected, logging image")
+            wandb.log({"backwards_val_graph" : wandb.plot.line_series(
+                    xs=graph_xs,
+                    ys=graph_ys,
+                    keys=["Best RMSE prediction", "Best RMSE real", "Worst RMSE prediction", "Worst RMSE real", f"Average RMSE prediction ({average_RMSE})", "Average RMSE real"],
+                    title="Best vs Worst vs Average RMSE",
+                    xname="wavelength")})
+
         return loss
 
     def test_step(self, batch, batch_nb):
@@ -333,9 +358,8 @@ class BackwardModel(pl.LightningModule):
             torch.save(y, "emiss_true_back.pt")
             torch.save(y_pred, "emiss_pred.pt")
             torch.save(x_pred, "param_pred.pt")
-        # nngraph.emiss_error_graph(y_pred, y, "test_step.png")
-        # self.log_image(key="test_backwards_error_graphs", images=["test_step.png"])
-        # self.log(f"backward/test/loss", loss, prog_bar=True)
+        randcheck = np.random.uniform()
+        # i 
         return loss
 
     def configure_optimizers(self):
