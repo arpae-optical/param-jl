@@ -82,7 +82,7 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
     
 
     # plt.plot(
-    #     wavelength[0:519],
+    #     wavelength[0:820],
     #     old_emiss[0:519],
     #     c="blue",
     #     alpha=0.1,
@@ -108,15 +108,15 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
 
     best_RMSE_pred = predicted_emissivity[best_run_index][0:519]
 
-    best_RMSE_real = real_emissivity[best_run_index][0:519]
+    best_RMSE_real = real_emissivity[best_run_index][0:820]
 
-    worst_RMSE_pred = predicted_emissivity[worst_run_index][0:519]
+    worst_RMSE_pred = predicted_emissivity[worst_run_index][0:820]
 
-    worst_RMSE_real = real_emissivity[worst_run_index][0:519]
+    worst_RMSE_real = real_emissivity[worst_run_index][0:820]
 
-    average_RMSE_pred = predicted_emissivity[average_run_index][0:519]
+    average_RMSE_pred = predicted_emissivity[average_run_index][0:820]
 
-    average_RMSE_real = real_emissivity[average_run_index][0:519]
+    average_RMSE_real = real_emissivity[average_run_index][0:820]
 
     return([best_RMSE_pred, best_RMSE_real, worst_RMSE_pred, worst_RMSE_real, average_RMSE_pred, average_RMSE_real, wavelength, RMSE_total])
 
@@ -185,14 +185,14 @@ def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
 
                 # Emiss residuals
                 j = arbitrary_vae
-                current_list = predicted_emiss_list[j][i_run_index][0:519]
+                current_list = predicted_emiss_list[j][i_run_index][0:820]
 
                 MSE_E_P = 0
-                for wavelen_i in range(519):
+                for wavelen_i in range(820):
                     MSE_E_P += (
                         real_emiss_list[wavelen_i] - current_list[wavelen_i]
                     ) ** 2
-                MSE_E_P = MSE_E_P / 519
+                MSE_E_P = MSE_E_P / 820
 
                 # Laser Param Residuals
                 watt1 = temp_real_laser.T[2:].T.cpu()
