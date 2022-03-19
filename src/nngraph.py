@@ -83,7 +83,7 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
 
     # plt.plot(
     #     wavelength[0:820],
-    #     old_emiss[0:519],
+    #     old_emiss[0:820],
     #     c="blue",
     #     alpha=0.1,
     #     linewidth=2.0,
@@ -92,8 +92,8 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
 
     # new_emiss = real_emissivity[1]
     # plt.plot(
-    #     wavelength[0:519],b
-    #     new_emiss[0:519],
+    #     wavelength[0:820],b
+    #     new_emiss[0:820],
     #     c="black",
     #     alpha=1,
     #     linewidth=2.0,
@@ -106,7 +106,7 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
     # plt.xlabel("Wavelength")
     # plt.ylabel("Emissivity")
 
-    best_RMSE_pred = predicted_emissivity[best_run_index][0:519]
+    best_RMSE_pred = predicted_emissivity[best_run_index][0:820]
 
     best_RMSE_real = real_emissivity[best_run_index][0:820]
 
