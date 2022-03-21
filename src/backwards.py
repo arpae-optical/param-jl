@@ -153,29 +153,29 @@ class BackwardModel(pl.LightningModule):
                 ).mean()
             )
 
-            if np.random.rand() < 0.1:
-                for rand_idx in np.random.randint(
-                    0, self.config["backward_batch_size"], 3
-                ):
+            # if np.random.rand() < 0.1:
+            #     for rand_idx in np.random.randint(
+            #         0, self.config["backward_batch_size"], 3
+            #     ):
 
-                    fig, ax = plt.subplots()
-                    ax.scatter(
-                        self.wavelens.detach().cpu(),
-                        y_pred[rand_idx].detach().cpu(),
-                        c="r",
-                    )
-                    ax.scatter(
-                        self.wavelens.detach().cpu(), y[rand_idx].detach().cpu(), c="g"
-                    )
-                    ax.set_xlabel("Wavelen (μm)")
-                    ax.set_ylabel("Emissivity")
-                    ax.legend(["Pred", "Real"])
-                    ax.set_title("Random emiss comparison")
-                    # self.logger[0].experiment.log(
-                    #     # {"global_step": self.trainer.global_step, 'chart': wandb.Image(fig)},
-                    #     {"chart": wandb.Image(fig)},
-                    # )
-                    plt.close(fig)
+            #         fig, ax = plt.subplots()
+            #         ax.scatter(
+            #             self.wavelens.detach().cpu(),
+            #             y_pred[rand_idx].detach().cpu(),
+            #             c="r",
+            #         )
+            #         ax.scatter(
+            #             self.wavelens.detach().cpu(), y[rand_idx].detach().cpu(), c="g"
+            #         )
+            #         ax.set_xlabel("Wavelen (μm)")
+            #         ax.set_ylabel("Emissivity")
+            #         ax.legend(["Pred", "Real"])
+            #         ax.set_title("Random emiss comparison")
+            #         # self.logger[0].experiment.log(
+            #         #     # {"global_step": self.trainer.global_step, 'chart': wandb.Image(fig)},
+            #         #     {"chart": wandb.Image(fig)},
+            #         # )
+            #         plt.close(fig)
 
             self.log(
                 "backward/train/kl/loss",
@@ -191,17 +191,19 @@ class BackwardModel(pl.LightningModule):
             loss = y_loss + kl_loss
         self.log(f"backward/train/loss", loss, prog_bar=True)
         randcheck = np.random.uniform()
-        if randcheck < 0.05:
-            print("randomly selected, logging image")
+        if randcheck < 0.02:
             graph_xys = nngraph.emiss_error_graph(y_pred, y)
             graph_xs = graph_xys[6]
-            graph_ys_ave = graph_xys[2:4]
+            graph_ys = graph_xys[2:4] 
             average_RMSE = graph_xys[7]
-            wandb.log({"backwards_train_graph" : wandb.plot.line_series(
+            print("randomly selected, logging image")
+            print(f"loss var: {loss}")
+            print(f"calculated average RMSE: {average_RMSE}")
+            wandb.log({f"backwards_train_graph_batch_{_batch_nb}" : wandb.plot.line_series(
                     xs=graph_xs,
                     ys=graph_ys,
-                    keys=[f"Average RMSE prediction ({average_RMSE})", "Average RMSE real"],
-                    title="Best vs Worst vs Average RMSE, train",
+                    keys=[f"Average RMSE preds ({average_RMSE})", "Average RMSE real"],
+                    title=f"Preds vs True for average RMSE prediction, backwards val batch {_batch_nb}, RMSE {average_RMSE}",
                     xname="wavelength")})
 
         return loss
@@ -235,30 +237,30 @@ class BackwardModel(pl.LightningModule):
                 ).mean()
             )
 
-            if np.random.rand() < 0.1:
-                for rand_idx in np.random.randint(
-                    0, self.config["backward_batch_size"], 3
-                ):
+            # if np.random.rand() < 0.02:
+            #     for rand_idx in np.random.randint(
+            #         0, self.config["backward_batch_size"], 3
+            #     ):
 
-                    fig, ax = plt.subplots()
-                    ax.scatter(
-                        self.wavelens.detach().cpu(),
-                        y_pred[rand_idx].detach().cpu(),
-                        c="r",
-                    )
-                    ax.scatter(
-                        self.wavelens.detach().cpu(), y[rand_idx].detach().cpu(), c="g"
-                    )
-                    ax.set_xlabel("Wavelen (μm)")
-                    ax.set_ylabel("Emissivity")
-                    ax.legend(["Pred", "Real"])
-                    ax.set_title("Random emiss comparison")
-                    # self.logger[0].experiment.log(
-                    #     # {"global_step": self.trainer.global_step, 'chart': wandb.Image(fig)},
-                    #     # step=self.trainer.global_step,
-                    #     {"chart": wandb.Image(fig)},
-                    # )
-                    plt.close(fig)
+            #         fig, ax = plt.subplots()
+            #         ax.scatter(
+            #             self.wavelens.detach().cpu(),
+            #             y_pred[rand_idx].detach().cpu(),
+            #             c="r",
+            #         )
+            #         ax.scatter(
+            #             self.wavelens.detach().cpu(), y[rand_idx].detach().cpu(), c="g"
+            #         )
+            #         ax.set_xlabel("Wavelen (μm)")
+            #         ax.set_ylabel("Emissivity")
+            #         ax.legend(["Pred", "Real"])
+            #         ax.set_title("Random emiss comparison")
+            #         # self.logger[0].experiment.log(
+            #         #     # {"global_step": self.trainer.global_step, 'chart': wandb.Image(fig)},
+            #         #     # step=self.trainer.global_step,
+            #         #     {"chart": wandb.Image(fig)},
+            #         # )
+            #         plt.close(fig)
 
             self.log(
                 "backward/train/kl/loss",
@@ -274,17 +276,19 @@ class BackwardModel(pl.LightningModule):
             loss = y_loss + kl_loss
         self.log(f"backward/val/loss", loss, prog_bar=True)
         randcheck = np.random.uniform()
-        if randcheck < 0.05:
-            print("randomly selected, logging image")
+        if randcheck < 0.01:
             graph_xys = nngraph.emiss_error_graph(y_pred, y)
             graph_xs = graph_xys[6]
-            graph_ys_ave = graph_xys[2:4]
+            graph_ys = graph_xys[2:4]
             average_RMSE = graph_xys[7]
-            wandb.log({"backwards_val_graph" : wandb.plot.line_series(
+            print("randomly selected, logging image")
+            print(f"loss var: {loss}")
+            print(f"calculated average RMSE: {average_RMSE}")
+            wandb.log({f"backwards_val_graph_{batch_nb}" : wandb.plot.line_series(
                     xs=graph_xs,
                     ys=graph_ys,
-                    keys=[f"Average RMSE prediction ({average_RMSE})", "Average RMSE real"],
-                    title="Best vs Worst vs Average RMSE, val",
+                    keys=[f"Average RMSE preds ({average_RMSE})", "Average RMSE real"],
+                    title=f"Preds vs True for average RMSE prediction, backwards val batch {batch_nb}, RMSE {average_RMSE}",
                     xname="wavelength")})
 
         return loss
@@ -316,30 +320,30 @@ class BackwardModel(pl.LightningModule):
                     ),
                 ).mean()
             )
-            if np.random.rand() < 0.1:
-                for rand_idx in np.random.randint(
-                    0, self.config["backward_batch_size"], 3
-                ):
+            # if np.random.rand() < 0.1:
+            #     for rand_idx in np.random.randint(
+            #         0, self.config["backward_batch_size"], 3
+            #     ):
 
-                    fig, ax = plt.subplots()
-                    ax.scatter(
-                        self.wavelens.detach().cpu(),
-                        y_pred[rand_idx].detach().cpu(),
-                        c="r",
-                    )
-                    ax.scatter(
-                        self.wavelens.detach().cpu(), y[rand_idx].detach().cpu(), c="g"
-                    )
-                    ax.set_xlabel("Wavelen (μm)")
-                    ax.set_ylabel("Emissivity")
-                    ax.legend(["Pred", "Real"])
-                    ax.set_title("Random emiss comparison")
-                    # self.logger[0].experiment.log(
-                    #     # {"global_step": self.trainer.global_step, 'chart': wandb.Image(fig)},
-                    #     # step=self.trainer.global_step,
-                    #     {"chart": wandb.Image(fig)},
-                    # )
-                    plt.close(fig)
+            #         fig, ax = plt.subplots()
+            #         ax.scatter(
+            #             self.wavelens.detach().cpu(),
+            #             y_pred[rand_idx].detach().cpu(),
+            #             c="r",
+            #         )
+            #         ax.scatter(
+            #             self.wavelens.detach().cpu(), y[rand_idx].detach().cpu(), c="g"
+            #         )
+            #         ax.set_xlabel("Wavelen (μm)")
+            #         ax.set_ylabel("Emissivity")
+            #         ax.legend(["Pred", "Real"])
+            #         ax.set_title("Random emiss comparison")
+            #         # self.logger[0].experiment.log(
+            #         #     # {"global_step": self.trainer.global_step, 'chart': wandb.Image(fig)},
+            #         #     # step=self.trainer.global_step,
+            #         #     {"chart": wandb.Image(fig)},
+            #         # )
+            #         plt.close(fig)
 
             self.log(
                 "backward/train/kl/loss",
@@ -359,7 +363,21 @@ class BackwardModel(pl.LightningModule):
             torch.save(y_pred, "emiss_pred.pt")
             torch.save(x_pred, "param_pred.pt")
         randcheck = np.random.uniform()
-        # i 
+        if randcheck < 1:
+            print("randomly selected, logging image")
+            graph_xys = nngraph.emiss_error_graph(y_pred, y)
+            graph_xs = graph_xys[6]
+            graph_ys = graph_xys[2:4]
+            average_RMSE = graph_xys[7]
+            print("randomly selected, logging image")
+            print(f"loss var: {loss}")
+            print(f"calculated average RMSE: {average_RMSE}")
+            wandb.log({f"backwards_test_graph_{batch_nb}" : wandb.plot.line_series(
+                    xs=graph_xs,
+                    ys=graph_ys,
+                    keys=[f"Average RMSE preds ({average_RMSE})", "Average RMSE true"],
+                    title=f"Preds vs True for average RMSE prediction, backwards test batch {batch_nb}, RMSE {average_RMSE}",
+                    xname="wavelength")})
         return loss
 
     def configure_optimizers(self):

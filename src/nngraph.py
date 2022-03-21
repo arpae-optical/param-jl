@@ -66,8 +66,8 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
         MAPE = float(MAPE / 519)
         MAPE_total += MAPE/50
 
-    RMSE_residuals = [abs(RMSE_total - r) for r in RMSE_list]
-    average_run_index = min(range(len(RMSE_residuals)), key=RMSE_residuals.__getitem__)
+    RMSE_diff = [abs(RMSE_total - r) for r in RMSE_list]
+    average_run_index = min(range(len(RMSE_diff)), key=RMSE_diff.__getitem__)
 
     old_emiss = predicted_emissivity[1]
     # first_emiss = float(old_emiss[0])

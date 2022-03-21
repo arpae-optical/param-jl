@@ -9,7 +9,10 @@ import torch.nn.functional as F
 from torch import nn
 import nngraph
 import wandb
+
+import numpy as np
 from pathlib import Path
+
 from utils import Config, rmse
 
 class ForwardModel(pl.LightningModule):
@@ -63,19 +66,20 @@ class ForwardModel(pl.LightningModule):
         x, y = batch
         y_pred = self(x)
         loss = rmse(y_pred, y)
-        self.log(f"forward/val/loss", loss, prog_bar=True)
         randcheck = np.random.uniform()
-        if randcheck < 1:
+        self.log(f"forward/val/loss", loss, prog_bar=True)
+        if randcheck < 0.1:
             print("randomly selected, logging image")
+            print(loss)
             graph_xys = nngraph.emiss_error_graph(y_pred, y)
             graph_xs = graph_xys[6]
-            graph_ys_ave = graph_xys[2:4]
+            graph_ys = graph_xys[2:4]
             average_RMSE = graph_xys[7]
-            wandb.log({"forward_val_graph" : wandb.plot.line_series(
+            wandb.log({f"forwards_val_graph_{batch_nb}" : wandb.plot.line_series(
                     xs=graph_xs,
                     ys=graph_ys,
-                    keys=[f"Average RMSE prediction ({average_RMSE})", "Average RMSE real"],
-                    title="Best vs Worst vs Average RMSE, forward val",
+                    keys=[f"Average RMSE preds ({average_RMSE})", "Average RMSE real"],
+                    title=f"Preds vs True for average RMSE prediction, forwards val batch {batch_nb}",
                     xname="wavelength")})
         return loss
 
@@ -84,17 +88,18 @@ class ForwardModel(pl.LightningModule):
         y_pred = self(x)
         loss = rmse(y_pred, y)
         self.log(f"forward/test/loss", loss, prog_bar=True)
+        randcheck = np.random.uniform()
         if randcheck < 1:
             print("randomly selected, logging image")
             graph_xys = nngraph.emiss_error_graph(y_pred, y)
             graph_xs = graph_xys[6]
-            graph_ys_ave = graph_xys[2:4]
+            graph_ys = graph_xys[2:4]
             average_RMSE = graph_xys[7]
-            wandb.log({"forward_test_graph" : wandb.plot.line_series(
+            wandb.log({f"forwards_test_graph_{batch_nb}" : wandb.plot.line_series(
                     xs=graph_xs,
                     ys=graph_ys,
-                    keys=[f"Average RMSE prediction ({average_RMSE})", "Average RMSE real"],
-                    title="Best vs Worst vs Average RMSE, forward test",
+                    keys=[f"Average RMSE preds ({average_RMSE})", "Average RMSE real"],
+                    title=f"Preds vs True for average RMSE prediction, forwards test batch {batch_nb}",
                     xname="wavelength")})
         return loss
 
