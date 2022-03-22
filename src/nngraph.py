@@ -26,7 +26,6 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
     MAPE_total = 0
     wavelength = torch.load(Path("wavelength.pt"))
     wavelength = np.flip(np.array(wavelength.cpu())[0])
-    fig = plt.figure()
     best_run_index = 0
     best_RMSE = 1
     worst_RMSE = 0
@@ -65,21 +64,9 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
             MAPE += abs(real_emiss_list[wavelen_i] - current_list[wavelen_i])
         MAPE = float(MAPE / 519)
         MAPE_total += MAPE/50
+    RMSE_total = np.asarray(RMSE_total)
+    average_run_index = (np.abs(RMSE_list - RMSE_total)).argmin()
 
-    RMSE_diff = [abs(RMSE_total - r) for r in RMSE_list]
-    average_run_index = min(range(len(RMSE_diff)), key=RMSE_diff.__getitem__)
-
-    old_emiss = predicted_emissivity[1]
-    # first_emiss = float(old_emiss[0])
-    # new_emiss = np.concatenate((np.array([first_emiss for j in range(100)]), old_emiss))
-    plt.scatter(
-        wavelength[0:519],
-        [0 for n in range(519)],
-        s=[0.001 for n in range(519)],
-        label="Point density for reference",
-    )
-
-    
 
     best_RMSE_pred = predicted_emissivity[best_run_index][0:519]
 
@@ -91,9 +78,14 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
 
     average_RMSE_pred = predicted_emissivity[average_run_index][0:519]
 
+    MSE_E_P = 0
+    for wavelen_i in range(519):
+        MSE_E_P += (real_emissivity[average_run_index][wavelen_i] - predicted_emissivity[average_run_index][wavelen_i]) ** 2
+    RMSE_average = float(MSE_E_P / 519) ** (0.5)
+
     average_RMSE_real = real_emissivity[average_run_index][0:519]
 
-    return([best_RMSE_pred, best_RMSE_real, worst_RMSE_pred, worst_RMSE_real, average_RMSE_pred, average_RMSE_real, wavelength, RMSE_total])
+    return([best_RMSE_pred, best_RMSE_real, worst_RMSE_pred, worst_RMSE_real, average_RMSE_pred, average_RMSE_real, wavelength, RMSE_total, RMSE_average])
 
 
 def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
