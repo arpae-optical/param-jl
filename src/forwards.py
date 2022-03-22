@@ -68,7 +68,7 @@ class ForwardModel(pl.LightningModule):
         loss = rmse(y_pred, y)
         randcheck = np.random.uniform()
         self.log(f"forward/val/loss", loss, prog_bar=True)
-        if randcheck < 0.1:
+        if randcheck < 0.02:
             graph_xys = nngraph.emiss_error_graph(y_pred, y)
             graph_xs = graph_xys[6]
             graph_ys = graph_xys[4:6]
@@ -88,6 +88,7 @@ class ForwardModel(pl.LightningModule):
     def test_step(self, batch, batch_nb):
         x, y = batch
         y_pred = self(x) 
+        loss = rmse(y_pred, y)
         self.log(f"forward/test/loss", loss, prog_bar=True)
         randcheck = np.random.uniform()
         if randcheck < 1:

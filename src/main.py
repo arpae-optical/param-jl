@@ -121,16 +121,16 @@ def main(config: Config) -> None:
                 mode="min",
                 save_last=True,
             ),
-            pl.callbacks.progress.TQDMProgressBar(refresh_rate=100),
+            pl.callbacks.progress.TQDMProgressBar(refresh_rate=2),
         ],
         gpus=1,
         precision=32,
         # overfit_batches=1,
         # track_grad_norm=2,
         weights_summary="full",
-        check_val_every_n_epoch=10,
+        check_val_every_n_epoch=min(3, config["backward_num_epochs"]-1),
         gradient_clip_val=0.5,
-        log_every_n_steps=min(10, config["forward_num_epochs"]),
+        log_every_n_steps=min(3, config["forward_num_epochs"]-1),
     )
 
     backward_trainer = pl.Trainer(
@@ -158,9 +158,9 @@ def main(config: Config) -> None:
         gpus=1,
         precision=32,
         weights_summary="full",
-        check_val_every_n_epoch=10,
+        check_val_every_n_epoch=min(3, config["backward_num_epochs"]-1),
         gradient_clip_val=0.5,
-        log_every_n_steps=min(30, config["backward_num_epochs"]),
+        log_every_n_steps=min(3, config["backward_num_epochs"]-1),
     )
 
     forward_data_module = ForwardDataModule(config)
@@ -204,7 +204,7 @@ def main(config: Config) -> None:
     variance = config["kl_variance_coeff"]
     params_str = f"pred_iter_{pred_iters}_latent_size_{latent}_k1_variance_{variance}"
     save_str = f"src/{params_str}"
-#
+
 
     for i in range(config["prediction_iters"]):
         preds: List[Tensor] = backward_trainer.predict(
@@ -221,7 +221,7 @@ def main(config: Config) -> None:
         torch.save(preds, save_str)
     wandb.finish()
 
-    graph(residualsflag = True, predsvstrueflag = True, index_str = params_str, target_str = save_str)
+    # graph(residualsflag = True, predsvstrueflag = True, index_str = params_str, target_str = save_str)
 
 # The `or` idiom allows overriding values from the command line.
 config: Config = {
@@ -236,7 +236,6 @@ config: Config = {
     "use_cache": args.use_cache,
     "kl_coeff": tune.loguniform(2**-1, 2**0),
     "kl_variance_coeff": tune.loguniform(2**-12, 2**0),
-    "num_wavelens": 821,
     "prediction_iters": args.prediction_iters,
     "use_forward": args.use_forward,
     "load_forward_checkpoint": args.load_forward_checkpoint,
@@ -244,7 +243,7 @@ config: Config = {
 }
 
 
-for i in range(30):
+for i in range(1):
     # The `hasattr` lets us use Ray Tune just to provide hyperparameters.
     try:
         concrete_config: Config = Config(

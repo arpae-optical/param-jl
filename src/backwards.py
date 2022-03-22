@@ -102,6 +102,7 @@ class BackwardModel(pl.LightningModule):
             (y, x) = batch  # y is emiss,x is laser_params
             out["true_params"] = x
         out["true_emiss"] = y
+        y_pred = None
         for pred in [self(y) for _ in range(50)]:
             x_pred, dist = pred["params"], pred["dist"]
             out["params"].append(x_pred)
@@ -122,7 +123,6 @@ class BackwardModel(pl.LightningModule):
                     ).mean()
                 )
                 loss = y_loss + kl_loss
-                print(f"Predicted loss: {round(float(loss),5)}")
         return out
 
     def training_step(self, batch, _batch_nb):
@@ -138,6 +138,7 @@ class BackwardModel(pl.LightningModule):
             x_loss = rmse(x_pred, x)
         loss = x_loss
         self.log("backward/train/x/loss", x_loss, prog_bar=True)
+        
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
@@ -189,23 +190,26 @@ class BackwardModel(pl.LightningModule):
                 prog_bar=True,
             )
             loss = y_loss + kl_loss
-        self.log(f"backward/train/loss", loss, prog_bar=True)
-        randcheck = np.random.uniform()
-        if randcheck < 0.02:
-            graph_xys = nngraph.emiss_error_graph(y_pred, y)
-            graph_xs = graph_xys[6]
-            graph_ys = graph_xys[2:4] 
-            average_RMSE = graph_xys[7]
-            print("randomly selected, logging image")
-            print(f"loss: {round(float(loss),5)}")
-            print(f"calculated average RMSE: {round(float(average_RMSE),5)}")
-            wandb.log({f"backwards_train_graph_batch_{_batch_nb}" : wandb.plot.line_series(
-                    xs=graph_xs,
-                    ys=graph_ys,
-                    keys=[f"Average RMSE preds ({round(float(average_run_RMSE),5)})", "Average RMSE real"],
-                    title=f"Typical emiss, backwards val, average RMSE {round(float(rmse(y,y_pred)),5)}, loss {round(float(loss),5)}",
-                    xname="wavelength")})
+            randcheck = np.random.uniform()
+            
+            if randcheck < 0.02:
+                graph_xys = nngraph.emiss_error_graph(y_pred, y)
+                graph_xs = graph_xys[6]
+                graph_ys = graph_xys[4:6]
+                average_RMSE = graph_xys[7]
+                average_run_RMSE = graph_xys[8]
+                print("randomly selected, logging image")
+                print(f"loss var: {round(float(loss),5)}")
+                print(f"calculated average RMSE: {round(float(average_RMSE),5)}")
+                wandb.log({f"backwards_train_graph_batch_{_batch_nb}" : wandb.plot.line_series(
+                        xs=graph_xs,
+                        ys=graph_ys,
+                        keys=[f"Average RMSE preds ({round(float(average_run_RMSE),5)})", "Average RMSE real"],
+                        title=f"Typical emiss, backwards val, average RMSE {round(float(rmse(y,y_pred)),5)}, loss {round(float(loss),5)}",
+                        xname="wavelength")})
 
+        self.log(f"backward/train/loss", loss, prog_bar=True)
+        
         return loss
 
     def validation_step(self, batch, batch_nb):
@@ -222,6 +226,7 @@ class BackwardModel(pl.LightningModule):
         loss = x_loss
         self.log("backward/val/x/loss", x_loss, prog_bar=True)
         kl_loss = 0
+        y_pred = None
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
@@ -238,31 +243,6 @@ class BackwardModel(pl.LightningModule):
                 ).mean()
             )
 
-            # if np.random.rand() < 0.02:
-            #     for rand_idx in np.random.randint(
-            #         0, self.config["backward_batch_size"], 3
-            #     ):
-
-            #         fig, ax = plt.subplots()
-            #         ax.scatter(
-            #             self.wavelens.detach().cpu(),
-            #             y_pred[rand_idx].detach().cpu(),
-            #             c="r",
-            #         )
-            #         ax.scatter(
-            #             self.wavelens.detach().cpu(), y[rand_idx].detach().cpu(), c="g"
-            #         )
-            #         ax.set_xlabel("Wavelen (μm)")
-            #         ax.set_ylabel("Emissivity")
-            #         ax.legend(["Pred", "Real"])
-            #         ax.set_title("Random emiss comparison")
-            #         # self.logger[0].experiment.log(
-            #         #     # {"global_step": self.trainer.global_step, 'chart': wandb.Image(fig)},
-            #         #     # step=self.trainer.global_step,
-            #         #     {"chart": wandb.Image(fig)},
-            #         # )
-            #         plt.close(fig)
-
             self.log(
                 "backward/train/kl/loss",
                 kl_loss,
@@ -275,17 +255,15 @@ class BackwardModel(pl.LightningModule):
                 prog_bar=True,
             )
             loss = y_loss + kl_loss
-        self.log(f"backward/val/loss", loss, prog_bar=True)
         randcheck = np.random.uniform()
         if randcheck < 0.02:
+            print("randomly selected back, logging image")
             graph_xys = nngraph.emiss_error_graph(y_pred, y)
             graph_xs = graph_xys[6]
             graph_ys = graph_xys[2:4]
             average_RMSE = graph_xys[7]
             average_run_RMSE = graph_xys[8]
-            print("randomly selected, logging image")
             print(f"loss: {round(float(loss),5)}")
-            print(f"kl loss: {round(kl_loss,5)}")
             print(f"calculated average RMSE: {round(float(average_RMSE),5)}")
             wandb.log({f"backwards_val_graph_{batch_nb}" : wandb.plot.line_series(
                     xs=graph_xs,
@@ -293,6 +271,7 @@ class BackwardModel(pl.LightningModule):
                     keys=[f"typical pred, RMSE ({round(float(average_run_RMSE),5)})", "typical real emiss"],
                     title=f"Typical emiss, backwards val, average RMSE {round(float(rmse(y,y_pred)),5)}, loss {round(float(loss),5)}",
                     xname="wavelength")})
+        self.log(f"backward/val/loss", loss, prog_bar=True)
 
         return loss
 
@@ -310,6 +289,7 @@ class BackwardModel(pl.LightningModule):
         loss = x_loss
         self.log("backward/test/x/loss", x_loss, prog_bar=True)
         kl_loss = 0
+        y_pred  = None
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
@@ -324,30 +304,7 @@ class BackwardModel(pl.LightningModule):
                     ),
                 ).mean()
             )
-            # if np.random.rand() < 0.1:
-            #     for rand_idx in np.random.randint(
-            #         0, self.config["backward_batch_size"], 3
-            #     ):
-
-            #         fig, ax = plt.subplots()
-            #         ax.scatter(
-            #             self.wavelens.detach().cpu(),
-            #             y_pred[rand_idx].detach().cpu(),
-            #             c="r",
-            #         )
-            #         ax.scatter(
-            #             self.wavelens.detach().cpu(), y[rand_idx].detach().cpu(), c="g"
-            #         )
-            #         ax.set_xlabel("Wavelen (μm)")
-            #         ax.set_ylabel("Emissivity")
-            #         ax.legend(["Pred", "Real"])
-            #         ax.set_title("Random emiss comparison")
-            #         # self.logger[0].experiment.log(
-            #         #     # {"global_step": self.trainer.global_step, 'chart': wandb.Image(fig)},
-            #         #     # step=self.trainer.global_step,
-            #         #     {"chart": wandb.Image(fig)},
-            #         # )
-            #         plt.close(fig)
+     
 
             self.log(
                 "backward/train/kl/loss",
@@ -368,14 +325,13 @@ class BackwardModel(pl.LightningModule):
             torch.save(x_pred, "param_pred.pt")
         randcheck = np.random.uniform()
         if randcheck < 1:
+            print("randomly selected back, logging image")
             graph_xys = nngraph.emiss_error_graph(y_pred, y)
             graph_xs = graph_xys[6]
             graph_ys = graph_xys[2:4]
             average_RMSE = graph_xys[7]
             average_run_RMSE = graph_xys[8]
-            print("randomly selected, logging image")
             print(f"loss: {round(float(loss),5)}")
-            print(f"kl loss: {round(kl_loss,5)}")
             print(f"calculated average RMSE: {round(float(average_RMSE),5)}")
             wandb.log({f"backwards_test_graph_{batch_nb}" : wandb.plot.line_series(
                     xs=graph_xs,
