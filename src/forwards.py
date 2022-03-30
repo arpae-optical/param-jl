@@ -56,10 +56,11 @@ class ForwardModel(pl.LightningModule):
         x, y = batch
         y_pred = self(x)
         loss = rmse(y_pred, y)
-        # nngraph.emiss_error_graph(y_pred, y, "train_step.png")
-        # self.log_image(key="train_forwards_error_graphs", images=["train_step.png"])
-
+        if self.current_epoch == 3955:
+            print("integral graphing forward train")
+            nngraph.save_integral_emiss_point(y_pred, y, "forward_train_integral.txt")
         self.log(f"forward/train/loss", loss, prog_bar=True)
+        
         return loss
 
     def validation_step(self, batch, batch_nb):
@@ -67,43 +68,48 @@ class ForwardModel(pl.LightningModule):
         y_pred = self(x)
         loss = rmse(y_pred, y)
         randcheck = np.random.uniform()
-        self.log(f"forward/val/loss", loss, prog_bar=True)
-        if randcheck < 0.1:
+        if self.current_epoch > 3955 and self.current_epoch < 3962:
+            print("integral graphing forward val")
+            nngraph.save_integral_emiss_point(y_pred, y, "forward_val_integral.txt")
+        if randcheck < 0.02:
+            print("randomly selected, logging image")
             graph_xys = nngraph.emiss_error_graph(y_pred, y)
             graph_xs = graph_xys[6]
             graph_ys = graph_xys[4:6]
             average_RMSE = graph_xys[7]
             average_run_RMSE = graph_xys[8]
-            print("randomly selected, logging image")
             print(f"loss var: {round(float(loss),5)}")
             print(f"calculated average RMSE: {round(float(average_RMSE),5)}")
             wandb.log({f"forwards_val_graph_{batch_nb}" : wandb.plot.line_series(
                     xs=graph_xs,
                     ys=graph_ys,
                     keys=[f"typical pred, RMSE ({round(float(average_run_RMSE),5)})", "typical real emiss"],
-                    title=f"Typical emiss, forwards val, average RMSE {round(float(average_RMSE),5)}, loss {round(float(loss),5)}",
+                    title=f"Typical emiss, forwards val,  epoch {self.current_epoch}, RMSE {round(float(average_RMSE),5)}, loss {round(float(loss),5)}",
                     xname="wavelength")})
+        self.log(f"forward/val/loss", loss, prog_bar=True)
         return loss
 
     def test_step(self, batch, batch_nb):
         x, y = batch
         y_pred = self(x) 
+        loss = rmse(y_pred, y)
         self.log(f"forward/test/loss", loss, prog_bar=True)
+        nngraph.save_integral_emiss_point(y_pred, y, "forward_test_integral.txt")
         randcheck = np.random.uniform()
         if randcheck < 1:
+            print("randomly selected, logging image")
             graph_xys = nngraph.emiss_error_graph(y_pred, y)
             graph_xs = graph_xys[6]
             graph_ys = graph_xys[2:4]
             average_RMSE = graph_xys[7]
             average_run_RMSE = graph_xys[8]
-            print("randomly selected, logging image")
             print(f"loss var: {round(float(loss),5)}")
             print(f"calculated average RMSE: {round(float(average_RMSE),5)}")
             wandb.log({f"forwards_test_graph_{batch_nb}" : wandb.plot.line_series(
                     xs=graph_xs,
                     ys=graph_ys,
                     keys=[f"typical pred, RMSE ({round(float(average_run_RMSE),5)})", "typical real emiss"],
-                    title=f"Typical emiss, forwards test, average RMSE {round(float(average_RMSE),5)}, loss {round(float(loss),5)}",
+                    title=f"Typical emiss, forwards test,  epoch {self.current_epoch}, RMSE {round(float(average_RMSE),5)}, loss {round(float(loss),5)}",
                     xname="wavelength")})
         return loss
 
