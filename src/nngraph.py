@@ -8,6 +8,8 @@ import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score
 
 # from sklearn.neighbors import NearestNeighbors
 # from sklearn.metrics import mean_squared_error
@@ -19,8 +21,60 @@ import utils
 def unnormalize(normed, min, max):
     return normed * (max - min) + min
 
+def read_integral_emiss(filepath, index_str):
+    real_array = []
+    pred_array = []
+    with open(filepath) as integral_file:
+        lines = integral_file.readlines()
+        real_array = np.array([float(line[0:7]) for line in lines[0:3000]])
+        pred_array = np.array([float(line[9:]) for line in lines[0:3000]])
 
-def emiss_error_graph(predicted_emissivity, real_emissivity):
+    fig = plt.figure(1)
+    s = [40 for n in range(len(pred_array))]
+    plt.scatter(pred_array, real_array, alpha=0.01, s=s)
+    plt.xlim([0.5, 3])
+    plt.ylim([0.5, 3])
+    r2 = r2_score(real_array, pred_array)
+    plt.title(f"Laser Emiss Integral, Real vs Predicted, r^2 = {round(r2,4)}")
+    plt.xlabel("Predicted Emiss Integral")
+    plt.ylabel("Real Emiss Integral")
+    real_array, pred_array = real_array.reshape(-1,1), pred_array.reshape(-1,1)
+    
+    plt.plot(real_array, LinearRegression().fit(real_array, pred_array).predict(real_array), color = "green", label = f"r-squared = {r2}",)
+    # plt.annotate("r-squared = {:.3f}".format(r_value), (0, 1))
+    plt.savefig(f"{index_str}_graph_buckets.png")
+    fig.clf()
+
+def save_integral_emiss_point(predicted_emissivity, real_emissivity, filepath, wavelen_num = 300):
+    
+    wavelength = torch.load(Path("wavelength.pt"))
+    wavelength = np.flip(np.array(wavelength.cpu())[0])
+    eifile = open(filepath, "a")
+    print("start file")
+    for i_run_index in range(predicted_emissivity.size(dim = 0)):
+
+        # Emiss residuals
+
+        current_list = predicted_emissivity[i_run_index]
+
+        real_emiss_list = real_emissivity[i_run_index]
+
+        # old_emiss = predicted_emissivity[i_run_index][0:wavelen_num]
+        # first_emiss = float(old_emiss[0])
+        # new_emiss = np.concatenate((np.array([first_emiss for j in range(100)]), old_emiss))
+        
+
+        integral_real_total = 0
+        integral_pred_total = 0
+        for wavelen_i in range(wavelen_num-1):
+            integral_real_total += abs(float(real_emiss_list[wavelen_i])*float(wavelength[wavelen_i+1]-wavelength[wavelen_i]))
+            integral_pred_total += abs(float(current_list[wavelen_i])*float(wavelength[wavelen_i+1]-wavelength[wavelen_i]))
+        eifile.write(f"{float(integral_real_total):.5f}, {float(integral_pred_total):.5f}\n") #TODO Alok: return these two
+    eifile.close()
+    print("end file")
+
+
+def emiss_error_graph(predicted_emissivity, real_emissivity, wavelen_num = 300):
     # Emiss residuals
     RMSE_total = 0
     MAPE_total = 0
@@ -39,14 +93,14 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
 
         real_emiss_list = real_emissivity[i_run_index]
 
-        # old_emiss = predicted_emissivity[i_run_index][0:519]
+        # old_emiss = predicted_emissivity[i_run_index][0:wavelen_num]
         # first_emiss = float(old_emiss[0])
         # new_emiss = np.concatenate((np.array([first_emiss for j in range(100)]), old_emiss))
         
         MSE_E_P = 0
-        for wavelen_i in range(519):
+        for wavelen_i in range(wavelen_num):
             MSE_E_P += (real_emiss_list[wavelen_i] - current_list[wavelen_i]) ** 2
-        RMSE_E_P = float(MSE_E_P / 519) ** (0.5)
+        RMSE_E_P = float(MSE_E_P / wavelen_num) ** (0.5)
         RMSE_total += RMSE_E_P/50
 
         RMSE_list.append(RMSE_E_P)
@@ -60,35 +114,35 @@ def emiss_error_graph(predicted_emissivity, real_emissivity):
             worst_run_index = i_run_index
 
         MAPE = 0
-        for wavelen_i in range(519):
+        for wavelen_i in range(wavelen_num):
             MAPE += abs(real_emiss_list[wavelen_i] - current_list[wavelen_i])
-        MAPE = float(MAPE / 519)
+        MAPE = float(MAPE / wavelen_num)
         MAPE_total += MAPE/50
     RMSE_total = np.asarray(RMSE_total)
     average_run_index = (np.abs(RMSE_list - RMSE_total)).argmin()
 
 
-    best_RMSE_pred = predicted_emissivity[best_run_index][0:519]
+    best_RMSE_pred = predicted_emissivity[best_run_index][0:wavelen_num]
 
-    best_RMSE_real = real_emissivity[best_run_index][0:519]
+    best_RMSE_real = real_emissivity[best_run_index][0:wavelen_num]
 
-    worst_RMSE_pred = predicted_emissivity[worst_run_index][0:519]
+    worst_RMSE_pred = predicted_emissivity[worst_run_index][0:wavelen_num]
 
-    worst_RMSE_real = real_emissivity[worst_run_index][0:519]
+    worst_RMSE_real = real_emissivity[worst_run_index][0:wavelen_num]
 
-    average_RMSE_pred = predicted_emissivity[average_run_index][0:519]
+    average_RMSE_pred = predicted_emissivity[average_run_index][0:wavelen_num]
 
     MSE_E_P = 0
-    for wavelen_i in range(519):
+    for wavelen_i in range(wavelen_num):
         MSE_E_P += (real_emissivity[average_run_index][wavelen_i] - predicted_emissivity[average_run_index][wavelen_i]) ** 2
-    RMSE_average = float(MSE_E_P / 519) ** (0.5)
+    RMSE_average = float(MSE_E_P / wavelen_num) ** (0.5)
 
-    average_RMSE_real = real_emissivity[average_run_index][0:519]
+    average_RMSE_real = real_emissivity[average_run_index][0:wavelen_num]
 
     return([best_RMSE_pred, best_RMSE_real, worst_RMSE_pred, worst_RMSE_real, average_RMSE_pred, average_RMSE_real, wavelength, RMSE_total, RMSE_average])
 
 
-def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
+def graph(residualsflag, predsvstrueflag, wavelen_num = 300, index_str="default", target_str="0"):
     # importing the data
     wavelength = torch.load(Path("wavelength.pt"))
     wavelength = np.flip(np.array(wavelength.cpu())[0])
@@ -96,11 +150,12 @@ def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
         Path(f"{target_str}")
     )  # this'll just be str() if I end up not needing it
     preds = preds[0]
+    print(preds)
     real_laser = preds["true_params"]
     real_emissivity = preds["true_emiss"]
     predicted_emissivity = preds["pred_emiss"]
 
-    # laser indexed [vae out of 50][wavelength out of 519][params, 14]
+    # laser indexed [vae out of 50][wavelength out of wavelen_num][params, 14]
     predicted_laser = preds["params"]
 
     arbitrary_index = 20
@@ -124,8 +179,10 @@ def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
     if residualsflag == True:
         MSE_list = []
         params_list = []
-        for p in range(0, 400):
-
+        integral_pred_array = []
+        integral_real_array = []
+        for p in range(0, 500):
+            print(p)
             # index_array = [41,109,214,284,297,302,315,378]#,431,452
             # i_run_index = index_array[p]
             i_run_index = p
@@ -143,132 +200,34 @@ def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
                 # format the predicted params
 
                 real_emiss_list = real_emissivity[i_run_index]
-
                 predicted_emiss_list = predicted_emissivity
 
-                temp_real_laser = real_laser[i_run_index]
-
-                temp_predicted_laser = predicted_laser[arbitrary_vae][i_run_index]
 
                 # Emiss residuals
                 j = arbitrary_vae
-                current_list = predicted_emiss_list[j][i_run_index][0:519]
+                current_list = predicted_emiss_list[j][i_run_index][0:wavelen_num]
 
-                MSE_E_P = 0
-                for wavelen_i in range(519):
-                    MSE_E_P += (
-                        real_emiss_list[wavelen_i] - current_list[wavelen_i]
-                    ) ** 2
-                MSE_E_P = MSE_E_P / 519
+                integral_real_total = 0
+                integral_pred_total = 0
+                for wavelen_i in range(wavelen_num):
+                    integral_real_total += abs(real_emiss_list[wavelen_i]*(wavelength[wavelen_i+1]-wavelength[wavelen_i]))
+                    integral_pred_total += abs(current_list[wavelen_i]*(wavelength[wavelen_i+1]-wavelength[wavelen_i]))
+                integral_pred_array.append(integral_pred_total)
+                integral_real_array.append(integral_real_total)
 
-                # Laser Param Residuals
-                watt1 = temp_real_laser.T[2:].T.cpu()
-                watt2 = np.where(watt1 == 1)
-                watt = (watt2[0] + 2) / 10
 
-                speed = temp_real_laser.T[:1].T.cpu()
-                speed = np.array(speed)
-
-                spacing = temp_real_laser.T[1:2].T.cpu()
-                spacing = np.array(spacing)
-
-                real = []
-                real.append(watt)
-                real.append(speed)
-                real.append(spacing)
-                real = np.array(real)
-                watt_size = np.size(watt)
-                for i in range(len(real)):
-                    real[i] = [float(entry) for entry in real[i][0:watt_size]]
-                real = np.stack(real)
-
-                watt1 = temp_predicted_laser.T[2:].T.cpu()
-                watt2 = np.where(watt1 == 1)
-                watt = (watt2[0] + 2) / 10
-
-                speed = temp_predicted_laser.T[:1].T.cpu()
-                speed = np.array(speed)
-
-                spacing = temp_predicted_laser.T[1:2].T.cpu()
-                spacing = np.array(spacing)
-
-                predicted = []
-                predicted.append(watt)
-                predicted.append(speed)
-                predicted.append(spacing)
-                predicted = np.array(predicted)
-                watt_size = np.size(watt)
-                for i in range(len(predicted)):
-                    predicted[i] = [float(entry) for entry in predicted[i][0:watt_size]]
-                predicted = np.stack(predicted)
-                MSE_laser = (
-                    (predicted[0] - real[0]) ** 2
-                    + (predicted[1] - real[1]) ** 2
-                    + (predicted[2] - real[2]) ** 2
-                ) / 3
-
-                watt = float(watt)
-                speed = float(unnormalize(speed, min=10, max=700))
-                spacing = float(unnormalize(spacing, min=1, max=42))
-
-                file = open(f"{index_str}_watt_speed_spacing.csv", "a")
-                file.write(f"{watt}, {speed}, {spacing} \n")
-                file.close()
-
-                MSE_E_P = float(MSE_E_P)
-                MSE_laser = float(MSE_laser)
-                bucket_cutoff = 0.03
-                if MSE_E_P >= bucket_cutoff:
-                    buckets[floor(MSE_laser / 0.1)] += 1
-                    bucket_totals[floor(MSE_laser / 0.1)] += 1
-                if MSE_E_P < bucket_cutoff:
-                    bucket_totals[floor(MSE_laser / 0.1)] += 1
-
-                params_list.append(MSE_laser)
-
-                MSE_list.append(MSE_E_P)
-
-        print("Emiss Std")
-        print(np.std(MSE_list))
-        print(np.mean(MSE_list))
-
-        print("Param Std")
-        print(np.std(params_list))
-        print(np.mean(params_list))
+                
         fig = plt.figure(1)
-        fig.clf()
-        ax = fig.add_subplot(1, 1, 1)
-        c = np.linspace(0, 10, len(params_list))
-        cmap = cm.jet
-        s = [4 for n in range(len(params_list))]
-        ax.scatter(params_list, MSE_list, alpha=0.1, s=s, c=c, cmap=cmap)
-        bucket_x = [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95]
-        bucket_y = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-        for i in range(10):
-            print(i)
-            print("bucket fill")
-            print(buckets[i])
-            print("out of")
-            print(bucket_totals[i])
-            if bucket_totals[i] == 0:
-                bucket_y[i] = 0
-            else:
-                bucket_y[i] = buckets[i] / bucket_totals[i] * 5
-        bucket_y = bucket_y[0:5]
-        bucket_x = bucket_x[0:5]
-        plt.bar(bucket_x, bucket_y, align="center", alpha=0.3, width=0.1)
-        plt.title("Laser Params vs Emiss")
-        plt.xlabel("Laser Parameter Residuals")
-        plt.ylabel("Emissivity Residuals")
+        s = [40 for n in range(len(integral_pred_array))]
+        plt.scatter(integral_pred_array, integral_real_array, alpha=0.03, s=s)
+        plt.xlim([0.5, 2.5])
+        plt.ylim([0.5, 2.5])
+        plt.title("Laser Emiss Integral, Real vs Predicted")
+        plt.xlabel("Predicted Emiss Integral")
+        plt.ylabel("Real Emiss Integral")
         # plt.annotate("r-squared = {:.3f}".format(r_value), (0, 1))
         plt.savefig(f"{index_str}_graph_buckets.png")
-
-    Laser_E_P_list = []
-    Laser_E_M_list = []
-    Laser_P_M_list = []
-    Emiss_E_P_list = []
-    Emiss_E_M_list = []
-    Emiss_P_M_list = []
+        fig.clf()
 
     # randomly sample from real validation
 
@@ -283,7 +242,7 @@ def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
 
                 # Emiss residuals
 
-                current_list = predicted_emissivity[arbitrary_vae][i_run_index][0:519]
+                current_list = predicted_emissivity[arbitrary_vae][i_run_index][0:wavelen_num]
 
                 real_emiss_list = real_emissivity[i_run_index]
 
@@ -291,38 +250,38 @@ def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
                 # first_emiss = float(old_emiss[0])
                 # new_emiss = np.concatenate((np.array([first_emiss for j in range(100)]), old_emiss))
                 plt.plot(
-                    wavelength[0:519],
-                    old_emiss[0:519],
+                    wavelength[0:wavelen_num],
+                    old_emiss[0:wavelen_num],
                     c="blue",
                     alpha=0.1,
                     linewidth=2.0,
                 )
                 MSE_E_P = 0
-                for wavelen_i in range(519):
+                for wavelen_i in range(wavelen_num):
                     MSE_E_P += (
                         real_emiss_list[wavelen_i] - current_list[wavelen_i]
                     ) ** 2
-                RMSE_E_P = float(MSE_E_P / 519) ** (0.5)
+                RMSE_E_P = float(MSE_E_P / wavelen_num) ** (0.5)
                 RMSE_total += RMSE_E_P
 
                 MAPE = 0
-                for wavelen_i in range(519):
+                for wavelen_i in range(wavelen_num):
                     MAPE += abs(real_emiss_list[wavelen_i] - current_list[wavelen_i])
-                MAPE = float(MAPE / 519)
+                MAPE = float(MAPE / wavelen_num)
                 MAPE_total += MAPE
 
             old_emiss = predicted_emissivity[49][i_run_index]
             # first_emiss = float(old_emiss[0])
             # new_emiss = np.concatenate((np.array([first_emiss for j in range(100)]), old_emiss))
             plt.scatter(
-                wavelength[0:519],
-                [0 for n in range(519)],
-                s=[0.001 for n in range(519)],
+                wavelength[0:wavelen_num],
+                [0 for n in range(wavelen_num)],
+                s=[0.001 for n in range(wavelen_num)],
                 label="Point density for reference",
             )
             plt.plot(
-                wavelength[0:519],
-                old_emiss[0:519],
+                wavelength[0:wavelen_num],
+                old_emiss[0:wavelen_num],
                 c="blue",
                 alpha=0.1,
                 linewidth=2.0,
@@ -331,8 +290,8 @@ def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
 
             new_emiss = real_emissivity[i_run_index]
             plt.plot(
-                wavelength[0:519],
-                new_emiss[0:519],
+                wavelength[0:wavelen_num],
+                new_emiss[0:wavelen_num],
                 c="black",
                 alpha=1,
                 linewidth=2.0,
@@ -353,4 +312,4 @@ def graph(residualsflag, predsvstrueflag, index_str="default", target_str="0"):
 # real_laser = preds["true_params"]
 # real_emissivity = preds["true_emiss"]
 # predicted_emissivity = preds["pred_emiss"][1]
-# print(emiss_error_graph(predicted_emissivity, real_emissivity))
+# save_integral_emiss_point(predicted_emissivity, real_emissivity, "test.txt")
