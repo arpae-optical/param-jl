@@ -5,20 +5,19 @@ import random
 from pathlib import Path
 from typing import Optional
 
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-import wandb
 from torch import nn
 from torch.distributions import Normal, kl_divergence
 from torch.utils.data import DataLoader, TensorDataset
 
 import data
 import nngraph
-import matplotlib.cm as cm
-import matplotlib.pyplot as plt
+import wandb
 from forwards import ForwardModel
 from utils import Config, Stage, rmse, split
 
@@ -99,8 +98,9 @@ class BackwardModel(pl.LightningModule):
         try:
             (y,) = batch  # y is emiss
         except ValueError:
-            (y, x) = batch  # y is emiss,x is laser_params
+            (y, x, uids) = batch  # y is emiss,x is laser_params
             out["true_params"] = x
+            out["uids"] = uids
         out["true_emiss"] = y
         y_pred = None
         for pred in [self(y) for _ in range(50)]:
@@ -127,7 +127,7 @@ class BackwardModel(pl.LightningModule):
 
     def training_step(self, batch, _batch_nb):
         # TODO: plot
-        y, x = (emiss, laser_params) = batch
+        y, x, uids = (emiss, laser_params, uids) = batch
 
         x_pred = self(y)
         x_pred, dist = x_pred["params"], x_pred["dist"]
@@ -138,7 +138,7 @@ class BackwardModel(pl.LightningModule):
             x_loss = rmse(x_pred, x)
         loss = x_loss
         self.log("backward/train/x/loss", x_loss, prog_bar=True)
-        
+
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
@@ -154,30 +154,6 @@ class BackwardModel(pl.LightningModule):
                 ).mean()
             )
 
-            # if np.random.rand() < 0.1:
-            #     for rand_idx in np.random.randint(
-            #         0, self.config["backward_batch_size"], 3
-            #     ):
-
-            #         fig, ax = plt.subplots()
-            #         ax.scatter(
-            #             self.wavelens.detach().cpu(),
-            #             y_pred[rand_idx].detach().cpu(),
-            #             c="r",
-            #         )
-            #         ax.scatter(
-            #             self.wavelens.detach().cpu(), y[rand_idx].detach().cpu(), c="g"
-            #         )
-            #         ax.set_xlabel("Wavelen (μm)")
-            #         ax.set_ylabel("Emissivity")
-            #         ax.legend(["Pred", "Real"])
-            #         ax.set_title("Random emiss comparison")
-            #         # self.logger[0].experiment.log(
-            #         #     # {"global_step": self.trainer.global_step, 'chart': wandb.Image(fig)},
-            #         #     {"chart": wandb.Image(fig)},
-            #         # )
-            #         plt.close(fig)
-
             self.log(
                 "backward/train/kl/loss",
                 kl_loss,
@@ -190,17 +166,18 @@ class BackwardModel(pl.LightningModule):
                 prog_bar=True,
             )
             loss = y_loss + kl_loss
-            
 
         if self.current_epoch == 3994:
-            nngraph.save_integral_emiss_point(y_pred, y, "backwards_train_points.txt", all_points = True)
+            nngraph.save_integral_emiss_point(
+                y_pred, y, "backwards_train_points.txt", all_points=True
+            )
         self.log(f"backward/train/loss", loss, prog_bar=True)
-        
+
         return loss
 
     def validation_step(self, batch, batch_nb):
         # TODO: plot
-        y, x = (emiss, laser_params) = batch
+        y, x, uids = (emiss, laser_params, uids) = batch
 
         x_pred = self(y)
         x_pred, dist = x_pred["params"], x_pred["dist"]
@@ -243,14 +220,16 @@ class BackwardModel(pl.LightningModule):
             loss = y_loss + kl_loss
         randcheck = np.random.uniform()
         if self.current_epoch > 3994:
-            nngraph.save_integral_emiss_point(y_pred, y, "backwards_val_points.txt", all_points = True)
+            nngraph.save_integral_emiss_point(
+                y_pred, y, "backwards_val_points.txt", all_points=True
+            )
         self.log(f"backward/val/loss", loss, prog_bar=True)
 
         return loss
 
     def test_step(self, batch, batch_nb):
         # TODO: plot
-        y, x = (emiss, laser_params) = batch
+        y, x, uids = (emiss, laser_params, uids) = batch
 
         x_pred = self(y)
         x_pred, dist = x_pred["params"], x_pred["dist"]
@@ -262,8 +241,10 @@ class BackwardModel(pl.LightningModule):
         loss = x_loss
         self.log("backward/test/x/loss", x_loss, prog_bar=True)
         kl_loss = 0
-        y_pred  = None
-        nngraph.save_integral_emiss_point(y_pred, y, "backwards_test_points.txt", all_points = True)
+        y_pred = None
+        nngraph.save_integral_emiss_point(
+            y_pred, y, "backwards_test_points.txt", all_points=True
+        )
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
@@ -278,7 +259,6 @@ class BackwardModel(pl.LightningModule):
                     ),
                 ).mean()
             )
-     
 
             self.log(
                 "backward/train/kl/loss",

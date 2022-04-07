@@ -7,14 +7,17 @@ import re
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 import pymongo
 import pytorch_lightning as pl
 import sklearn
 import torch
 import torch.nn.functional as F
+from scipy.interpolate import interp1d
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
+from tqdm.contrib import tenumerate
 
 import utils
 from utils import Config, Stage, rmse, split
@@ -22,20 +25,20 @@ from utils import Config, Stage, rmse, split
 LaserParams, Emiss = torch.FloatTensor, torch.FloatTensor
 
 
-def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
+def get_data(
+    use_cache: bool = True, num_wavelens: int = 300
+) -> Tuple[LaserParams, Emiss, torch.LongTensor]:
     """Data is sorted in ascending order of wavelength."""
     if all(
         [
             use_cache,
-            Path("emissivity.pt").exists(),
-            Path("laser_params.pt").exists(),
-            Path("wavelength.pt").exists(),
+            Path("data.pt").exists(),
         ]
     ):
-        laser_params, emissivity, wavelength = (
-            torch.load(Path("laser_params.pt")),
-            torch.load(Path("emissivity.pt")),
-            torch.load(Path("wavelength.pt")),
+        data = torch.load(Path("data.pt"))
+        norm_laser_params, interp_emissivities = (
+            data["normalized_laser_params"],
+            data["interpolated_emiss"],
         )
     else:
         client = pymongo.MongoClient(
@@ -43,7 +46,8 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
         )
         db = client.propopt.laser_samples2
         laser_params, emissivity, wavelength = [], [], []
-        wattages = []
+        interp_emissivities, interp_wavelengths = [], []
+        uids = []
         # TODO: clean up and generalize when needed
         # the values are indexes for one hot vectorization
         wattage_idxs = {
@@ -67,7 +71,7 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
 
         # TODO: relax this to all wattages, try discretizing them w/
         # softmax instead
-        for entry in tqdm(db.find()):
+        for uid, entry in tenumerate(db.find()):
             # TODO: ensure that this is sorted by wavelength
             # TODO log transform?
             emiss_plot: List[float] = [
@@ -86,6 +90,12 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
             # Reverse to sort in ascending rather than descending order.
             emiss_plot.reverse()
             wavelength_plot.reverse()
+            # interpolated columns
+            interp_wavelen = np.linspace(
+                min(wavelength_plot), max(wavelength_plot), num=num_wavelens
+            )
+            interp_emiss = interp1d(wavelength_plot, emiss_plot)(interp_wavelen)
+
             # drop all problematic emissivity (only 3% of data dropped)
 
             if len(emiss_plot) != (_MANUALLY_COUNTED_LENGTH := 821) or any(
@@ -102,19 +112,20 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
                     num_classes=len(wattage_idxs),
                 ),
             ]
+            uids.append(uid)
             laser_params.append(params)
             emissivity.append(emiss_plot)
             wavelength.append(wavelength_plot)
+            interp_emissivities.append(interp_emiss)
+            interp_wavelengths.append(interp_wavelen)
 
         # normalize laser parameters
         laser_params = torch.FloatTensor(laser_params)
         emissivity = torch.FloatTensor(emissivity)
         wavelength = torch.FloatTensor(wavelength)
-
-        # break any correlations in data
-        laser_params, emissivity, wavelength = sklearn.utils.shuffle(
-            laser_params, emissivity, wavelength
-        )
+        interp_emissivities = torch.FloatTensor(interp_emissivities)
+        interp_wavelengths = torch.FloatTensor(interp_wavelengths)
+        uids = torch.LongTensor(uids)
 
         print(f"{len(laser_params)=}")
         print(f"{len(emissivity)=}")
@@ -124,17 +135,22 @@ def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
         print(f"{emissivity.max()=}")
 
         # Save unnormalized data for convenience later.
-        torch.save(laser_params, Path("unnorm_laser_params.pt"))
-        torch.save(emissivity, Path("unnorm_emissivity.pt"))
-        torch.save(wavelength, Path("unnorm_wavelength.pt"))
 
-        laser_params /= laser_params.max(0).values
+        norm_laser_params = laser_params / laser_params.max(0).values
+        torch.save(
+            {
+                "wavelength": wavelength,
+                "laser_params": laser_params,
+                "emissivity": emissivity,
+                "uids": uids,
+                "interpolated_emissivity": interp_emissivities,
+                "interpolated_wavelength": interp_wavelengths,
+                "normalized_laser_params": norm_laser_params,
+            },
+            Path("data.pt"),
+        )
 
-        torch.save(laser_params, Path("laser_params.pt"))
-        torch.save(emissivity, Path("emissivity.pt"))
-        torch.save(wavelength, Path("wavelength.pt"))
-
-    return laser_params, emissivity
+    return norm_laser_params, interp_emissivities, uids
 
 
 class ForwardDataModule(pl.LightningDataModule):
@@ -148,13 +164,16 @@ class ForwardDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str]) -> None:
 
-        input, output = get_data(self.config["use_cache"])
-        splits = split(len(input))
+        laser_params, emiss, uids = get_data(
+            use_cache=self.config["use_cache"], num_wavelens=self.config["num_wavelens"]
+        )
+        splits = split(len(laser_params))
 
         self.train, self.val, self.test = [
             TensorDataset(
-                input[splits[s].start : splits[s].stop],
-                output[splits[s].start : splits[s].stop],
+                laser_params[splits[s].start : splits[s].stop],
+                emiss[splits[s].start : splits[s].stop],
+                uids[splits[s].start : splits[s].stop],
             )
             for s in ("train", "val", "test")
         ]
@@ -195,14 +214,18 @@ class BackwardDataModule(pl.LightningDataModule):
 
     def setup(self, stage: Optional[str]) -> None:
 
-        output, input = get_data(self.config["use_cache"])
+        # XXX we can safely use cache since ForwardDataModule is created first
+        laser_params, emiss, uids = get_data(
+            use_cache=True, num_wavelens=self.config["num_wavelens"]
+        )
 
-        splits = split(len(input))
+        splits = split(len(laser_params))
 
         self.train, self.val, self.test = [
             TensorDataset(
-                input[splits[s].start : splits[s].stop],
-                output[splits[s].start : splits[s].stop],
+                emiss[splits[s].start : splits[s].stop],
+                laser_params[splits[s].start : splits[s].stop],
+                uids[splits[s].start : splits[s].stop],
             )
             for s in ("train", "val", "test")
         ]

@@ -10,19 +10,17 @@ from typing import List, Optional, TypedDict
 
 import pytorch_lightning as pl
 import torch
-import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from ray import tune
-from ray_lightning import RayPlugin
-from ray_lightning.tune import TuneReportCallback, get_tune_resources
 from torch import Tensor
 
+import wandb
 from backwards import BackwardModel
 from data import BackwardDataModule, ForwardDataModule, StepTestDataModule
 from forwards import ForwardModel
-from utils import Config
 from nngraph import graph
+from utils import Config
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -128,9 +126,9 @@ def main(config: Config) -> None:
         # overfit_batches=1,
         # track_grad_norm=2,
         weights_summary="full",
-        check_val_every_n_epoch=min(3, config["backward_num_epochs"]-1),
+        check_val_every_n_epoch=min(3, config["backward_num_epochs"] - 1),
         gradient_clip_val=0.5,
-        log_every_n_steps=min(3, config["forward_num_epochs"]-1),
+        log_every_n_steps=min(3, config["forward_num_epochs"] - 1),
     )
 
     backward_trainer = pl.Trainer(
@@ -158,14 +156,13 @@ def main(config: Config) -> None:
         gpus=1,
         precision=32,
         weights_summary="full",
-        check_val_every_n_epoch=min(3, config["backward_num_epochs"]-1),
+        check_val_every_n_epoch=min(3, config["backward_num_epochs"] - 1),
         gradient_clip_val=0.5,
-        log_every_n_steps=min(3, config["backward_num_epochs"]-1),
+        log_every_n_steps=min(3, config["backward_num_epochs"] - 1),
     )
 
     forward_data_module = ForwardDataModule(config)
     backward_data_module = BackwardDataModule(config)
-    step_data_module = StepTestDataModule()
 
     # TODO: load checkpoint for both forward and back
     if config["use_forward"]:
@@ -205,7 +202,6 @@ def main(config: Config) -> None:
     params_str = f"pred_iter_{pred_iters}_latent_size_{latent}_k1_variance_{variance}"
     save_str = f"src/{params_str}"
 
-
     for i in range(config["prediction_iters"]):
         preds: List[Tensor] = backward_trainer.predict(
             model=backward_model,
@@ -222,6 +218,7 @@ def main(config: Config) -> None:
     wandb.finish()
 
     # graph(residualsflag = True, predsvstrueflag = True, index_str = params_str, target_str = save_str)
+
 
 # The `or` idiom allows overriding values from the command line.
 config: Config = {
@@ -240,6 +237,7 @@ config: Config = {
     "use_forward": args.use_forward,
     "load_forward_checkpoint": args.load_forward_checkpoint,
     "load_backward_checkpoint": args.load_backward_checkpoint,
+    "num_wavelens": 300,
 }
 
 
