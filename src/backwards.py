@@ -190,24 +190,10 @@ class BackwardModel(pl.LightningModule):
                 prog_bar=True,
             )
             loss = y_loss + kl_loss
-            randcheck = np.random.uniform()
             
-            if randcheck < 0.02:
-                graph_xys = nngraph.emiss_error_graph(y_pred, y)
-                graph_xs = graph_xys[6]
-                graph_ys = graph_xys[4:6]
-                average_RMSE = graph_xys[7]
-                average_run_RMSE = graph_xys[8]
-                print("randomly selected, logging image")
-                print(f"loss var: {round(float(loss),5)}")
-                print(f"calculated average RMSE: {round(float(average_RMSE),5)}")
-                wandb.log({f"backwards_train_graph_batch_{_batch_nb}" : wandb.plot.line_series(
-                        xs=graph_xs,
-                        ys=graph_ys,
-                        keys=[f"Average RMSE preds ({round(float(average_run_RMSE),5)})", "Average RMSE real"],
-                        title=f"Typical emiss, backwards val, average RMSE {round(float(rmse(y,y_pred)),5)}, loss {round(float(loss),5)}",
-                        xname="wavelength")})
 
+        if self.current_epoch == 3994:
+            nngraph.save_integral_emiss_point(y_pred, y, "backwards_train_points.txt", all_points = True)
         self.log(f"backward/train/loss", loss, prog_bar=True)
         
         return loss
@@ -256,21 +242,8 @@ class BackwardModel(pl.LightningModule):
             )
             loss = y_loss + kl_loss
         randcheck = np.random.uniform()
-        if randcheck < 0.02:
-            print("randomly selected back, logging image")
-            graph_xys = nngraph.emiss_error_graph(y_pred, y)
-            graph_xs = graph_xys[6]
-            graph_ys = graph_xys[2:4]
-            average_RMSE = graph_xys[7]
-            average_run_RMSE = graph_xys[8]
-            print(f"loss: {round(float(loss),5)}")
-            print(f"calculated average RMSE: {round(float(average_RMSE),5)}")
-            wandb.log({f"backwards_val_graph_{batch_nb}" : wandb.plot.line_series(
-                    xs=graph_xs,
-                    ys=graph_ys,
-                    keys=[f"typical pred, RMSE ({round(float(average_run_RMSE),5)})", "typical real emiss"],
-                    title=f"Typical emiss, backwards val, average RMSE {round(float(rmse(y,y_pred)),5)}, loss {round(float(loss),5)}",
-                    xname="wavelength")})
+        if self.current_epoch > 3994:
+            nngraph.save_integral_emiss_point(y_pred, y, "backwards_val_points.txt", all_points = True)
         self.log(f"backward/val/loss", loss, prog_bar=True)
 
         return loss
@@ -290,6 +263,7 @@ class BackwardModel(pl.LightningModule):
         self.log("backward/test/x/loss", x_loss, prog_bar=True)
         kl_loss = 0
         y_pred  = None
+        nngraph.save_integral_emiss_point(y_pred, y, "backwards_test_points.txt", all_points = True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
@@ -323,22 +297,6 @@ class BackwardModel(pl.LightningModule):
             torch.save(y, "emiss_true_back.pt")
             torch.save(y_pred, "emiss_pred.pt")
             torch.save(x_pred, "param_pred.pt")
-        randcheck = np.random.uniform()
-        if randcheck < 1:
-            print("randomly selected back, logging image")
-            graph_xys = nngraph.emiss_error_graph(y_pred, y)
-            graph_xs = graph_xys[6]
-            graph_ys = graph_xys[2:4]
-            average_RMSE = graph_xys[7]
-            average_run_RMSE = graph_xys[8]
-            print(f"loss: {round(float(loss),5)}")
-            print(f"calculated average RMSE: {round(float(average_RMSE),5)}")
-            wandb.log({f"backwards_test_graph_{batch_nb}" : wandb.plot.line_series(
-                    xs=graph_xs,
-                    ys=graph_ys,
-                    keys=[f"typical pred, RMSE ({round(float(average_run_RMSE),5)})", "typical real emiss"],
-                    title=f"Typical emiss, backwards test, average RMSE {round(float(rmse(y,y_pred)),5)}, loss {round(float(loss),5)}",
-                    xname="wavelength")})
         return loss
 
     def configure_optimizers(self):

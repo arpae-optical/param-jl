@@ -26,14 +26,14 @@ def read_integral_emiss(filepath, index_str):
     pred_array = []
     with open(filepath) as integral_file:
         lines = integral_file.readlines()
-        real_array = np.array([float(line[0:7]) for line in lines[0:3000]])
-        pred_array = np.array([float(line[9:]) for line in lines[0:3000]])
-
+        real_array = np.array([float(line[0:7]) for line in lines[0:176000]])
+        pred_array = np.array([float(line[9:]) for line in lines[0:176000]])
+    print(len(pred_array))
     fig = plt.figure(1)
-    s = [40 for n in range(len(pred_array))]
-    plt.scatter(pred_array, real_array, alpha=0.01, s=s)
-    plt.xlim([0.5, 3])
-    plt.ylim([0.5, 3])
+    s = [5 for n in range(len(pred_array))]
+    plt.scatter(pred_array, real_array, alpha=0.003, s=s)
+    plt.xlim([min(pred_array), max(pred_array)])
+    plt.ylim([min(real_array), max(real_array)])
     r2 = r2_score(real_array, pred_array)
     plt.title(f"Laser Emiss Integral, Real vs Predicted, r^2 = {round(r2,4)}")
     plt.xlabel("Predicted Emiss Integral")
@@ -42,10 +42,10 @@ def read_integral_emiss(filepath, index_str):
     
     plt.plot(real_array, LinearRegression().fit(real_array, pred_array).predict(real_array), color = "green", label = f"r-squared = {r2}",)
     # plt.annotate("r-squared = {:.3f}".format(r_value), (0, 1))
-    plt.savefig(f"{index_str}_graph_buckets.png")
+    plt.savefig(f"{index_str}.png")
     fig.clf()
 
-def save_integral_emiss_point(predicted_emissivity, real_emissivity, filepath, wavelen_num = 300):
+def save_integral_emiss_point(predicted_emissivity, real_emissivity, filepath, wavelen_num = 300, all_points = False):
     
     wavelength = torch.load(Path("wavelength.pt"))
     wavelength = np.flip(np.array(wavelength.cpu())[0])
@@ -67,8 +67,13 @@ def save_integral_emiss_point(predicted_emissivity, real_emissivity, filepath, w
         integral_real_total = 0
         integral_pred_total = 0
         for wavelen_i in range(wavelen_num-1):
-            integral_real_total += abs(float(real_emiss_list[wavelen_i])*float(wavelength[wavelen_i+1]-wavelength[wavelen_i]))
-            integral_pred_total += abs(float(current_list[wavelen_i])*float(wavelength[wavelen_i+1]-wavelength[wavelen_i]))
+            if all_points == False:
+                integral_real_total += abs(float(real_emiss_list[wavelen_i])*float(wavelength[wavelen_i+1]-wavelength[wavelen_i]))
+                integral_pred_total += abs(float(current_list[wavelen_i])*float(wavelength[wavelen_i+1]-wavelength[wavelen_i]))
+            elif all_points == True:
+                eifile.write(f"{float(real_emiss_list[wavelen_i]):.5f}, {float(current_list[wavelen_i]):.5f}\n")
+            else:
+                print("all_points must be True or False") #TODO: proper errors
         eifile.write(f"{float(integral_real_total):.5f}, {float(integral_pred_total):.5f}\n") #TODO Alok: return these two
     eifile.close()
     print("end file")
@@ -142,7 +147,7 @@ def emiss_error_graph(predicted_emissivity, real_emissivity, wavelen_num = 300):
     return([best_RMSE_pred, best_RMSE_real, worst_RMSE_pred, worst_RMSE_real, average_RMSE_pred, average_RMSE_real, wavelength, RMSE_total, RMSE_average])
 
 
-def graph(residualsflag, predsvstrueflag, wavelen_num = 300, index_str="default", target_str="0"):
+def graph(residualsflag, predsvstrueflag, target_str, wavelen_num = 300, index_str="default"):
     # importing the data
     wavelength = torch.load(Path("wavelength.pt"))
     wavelength = np.flip(np.array(wavelength.cpu())[0])
