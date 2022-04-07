@@ -4,157 +4,143 @@ from __future__ import annotations
 
 import os
 import re
+import warnings
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 import pymongo
 import pytorch_lightning as pl
 import sklearn
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
+from pl_bolts.datamodules import SklearnDataset
+from scipy.interpolate import interp1d
+from sklearn.compose import ColumnTransformer
+from sklearn.datasets import fetch_openml, make_classification
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
+from sklearn.svm import SVC
+from sklearn_pandas import DataFrameMapper
+from torch.utils.data import DataLoader, Dataset, TensorDataset
+from torchtyping import TensorType as TT
+from torchtyping import patch_typeguard
 from tqdm import tqdm
+from tqdm.contrib import tenumerate
+from typeguard import typechecked
 
 import utils
 from utils import Config, Stage, rmse, split
 
-LaserParams, Emiss = torch.FloatTensor, torch.FloatTensor
+patch_typeguard()
 
 
-def get_data(use_cache: bool = True) -> Tuple[LaserParams, Emiss]:
-    """Data is sorted in ascending order of wavelength."""
-    if all(
-        [
-            use_cache,
-            Path("emissivity.pt").exists(),
-            Path("laser_params.pt").exists(),
-            Path("wavelength.pt").exists(),
-        ]
-    ):
-        laser_params, emissivity, wavelength = (
-            torch.load(Path("laser_params.pt")),
-            torch.load(Path("emissivity.pt")),
-            torch.load(Path("wavelength.pt")),
-        )
-    else:
-        client = pymongo.MongoClient(
-            "mongodb://propopt_ro:2vsz634dwrwwsq@mongodb07.nersc.gov/propopt"
-        )
-        db = client.propopt.laser_samples2
-        laser_params, emissivity, wavelength = [], [], []
-        wattages = []
-        # TODO: clean up and generalize when needed
-        # the values are indexes for one hot vectorization
-        wattage_idxs = {
-            0.2: 0,
-            0.3: 1,
-            0.4: 2,
-            0.5: 3,
-            0.6: 4,
-            0.7: 5,
-            0.8: 6,
-            0.9: 7,
-            1.0: 8,
-            1.1: 9,
-            1.2: 10,
-            1.3: 11,
-            # these last 2 wattages are problematic since their
-            # emissivities are different lengths
-            # 1.4: 12,
-            # 1.5: 13,
+def create_dataset(
+    save_path: Path = Path("/data/alok/laser/dataset.pkl"),
+    use_cache: bool = True,
+    num_wavelens: int = 300,
+):
+    def filter(dataset: pd.DataFrame) -> pd.DataFrame:
+        return DataFrameMapper(
+            [(["wattage"], OrdinalEncoder(), {"alias": "encoded_wattage"})],
+            default=None,  # passes other columns through
+            df_out=True,
+        ).fit_transform(dataset)
+
+    if use_cache and save_path.exists():
+        return pd.read_pickle(save_path)
+
+    db = pymongo.MongoClient(
+        # "mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt"
+        host="mongodb://propopt_ro:2vsz634dwrwwsq@mongodb07.nersc.gov/propopt"
+    ).propopt.laser_samples2
+
+    # row names match dataframe names
+    rows = []
+    for uid, entry in tenumerate(db.find()):
+
+        # row names match dataframe names
+        row = {
+            # Reverse so wavelen/emiss are sorted ascending.
+            "emissivity": list(
+                reversed(
+                    [
+                        e["normal_emissivity"]
+                        for e in entry["emissivity_spectrum"]
+                        if 0.0 < e["normal_emissivity"] < 1.0
+                        and e["wavelength_micron"] < 12.0
+                    ]
+                )
+            ),
+            "wavelength": list(
+                reversed(
+                    [
+                        e["wavelength_micron"]
+                        for e in entry["emissivity_spectrum"]
+                        if e["wavelength_micron"] < 12.0
+                    ]
+                )
+            ),
+            "uid": uid,
+            "wattage": entry["laser_power_W"],
+            "speed": entry["laser_scanning_speed_x_dir_mm_per_s"],
+            "spacing": entry["laser_scanning_line_spacing_y_dir_micron"],
         }
 
-        # TODO: relax this to all wattages, try discretizing them w/
-        # softmax instead
-        for entry in tqdm(db.find()):
-            # TODO: ensure that this is sorted by wavelength
-            # TODO log transform?
-            emiss_plot: List[float] = [
-                e
-                for ex in entry["emissivity_spectrum"]
-                if (
-                    (e := ex["normal_emissivity"]) != 1.0
-                    and ex["wavelength_micron"] < 12
-                )
-            ]
-            wavelength_plot: List[float] = [
-                ex["wavelength_micron"]
-                for ex in entry["emissivity_spectrum"]
-                if (ex["normal_emissivity"] != 1.0 and ex["wavelength_micron"] < 12)
-            ]
-            # Reverse to sort in ascending rather than descending order.
-            emiss_plot.reverse()
-            wavelength_plot.reverse()
-            # drop all problematic emissivity (only 3% of data dropped)
-
-            if len(emiss_plot) != (_MANUALLY_COUNTED_LENGTH := 821) or any(
-                not (0 <= x <= 1) for x in emiss_plot
-            ):
-                continue
-            if entry["laser_power_W"] > 1.3:
-                print(entry["laser_power_W"])
-            params = [
-                entry["laser_scanning_speed_x_dir_mm_per_s"],
-                entry["laser_scanning_line_spacing_y_dir_micron"],
-                *F.one_hot(
-                    torch.tensor(wattage_idxs[round(entry["laser_power_W"], 1)]),
-                    num_classes=len(wattage_idxs),
-                ),
-            ]
-            laser_params.append(params)
-            emissivity.append(emiss_plot)
-            wavelength.append(wavelength_plot)
-
-        # normalize laser parameters
-        laser_params = torch.FloatTensor(laser_params)
-        emissivity = torch.FloatTensor(emissivity)
-        wavelength = torch.FloatTensor(wavelength)
-
-        # break any correlations in data
-        laser_params, emissivity, wavelength = sklearn.utils.shuffle(
-            laser_params, emissivity, wavelength
+        # interpolated columns
+        row["interpolated_wavelength"] = np.linspace(
+            min(row["wavelength"]), max(row["wavelength"]), num=num_wavelens
+        )
+        row["interpolated_emissivity"] = interp1d(row["wavelength"], row["emissivity"])(
+            row["interpolated_wavelength"]
         )
 
-        print(f"{len(laser_params)=}")
-        print(f"{len(emissivity)=}")
-        print(f"{laser_params.min(0)=}")
-        print(f"{laser_params.max(0)=}")
-        print(f"{emissivity.min()=}")
-        print(f"{emissivity.max()=}")
+        # TODO should we bring this back?
+        if row["wattage"] > 1.3 or len(row["emissivity"]) != 821:
+            continue
+        else:
+            rows.append(row)
+    dataset = pd.DataFrame(rows)
+    dataset = filter(dataset)
+    dataset.to_pickle(save_path)
 
-        # Save unnormalized data for convenience later.
-        torch.save(laser_params, Path("unnorm_laser_params.pt"))
-        torch.save(emissivity, Path("unnorm_emissivity.pt"))
-        torch.save(wavelength, Path("unnorm_wavelength.pt"))
-
-        laser_params /= laser_params.max(0).values
-
-        torch.save(laser_params, Path("laser_params.pt"))
-        torch.save(emissivity, Path("emissivity.pt"))
-        torch.save(wavelength, Path("wavelength.pt"))
-
-    return laser_params, emissivity
+    return dataset
 
 
-class ForwardDataModule(pl.LightningDataModule):
+class DataModule(pl.LightningDataModule):
     def __init__(
         self,
         config: Config,
     ) -> None:
         super().__init__()
         self.config = config
-        self.batch_size = self.config["forward_batch_size"]
+        self.batch_size = self.config["batch_size"]
 
     def setup(self, stage: Optional[str]) -> None:
+        T = torch.as_tensor
+        df = create_dataset(use_cache=self.config["use_cache"])
+        emiss: TT["b", "num_wavelens"] = torch.stack(
+            [torch.as_tensor(row) for row in (df["emissivity"])]
+        )
+        laser_params: TT["b", 3] = torch.stack(
+            [
+                torch.cat([T(row.spacing), T(row.speed), T(row.encoded_wattage)])
+                for row in df.iterrows()
+            ]
+        )
+        uids: TT["b"] = T([row.uid for row in df.iterrows()])
 
-        input, output = get_data(self.config["use_cache"])
-        splits = split(len(input))
+        splits = split(len(df))
 
         self.train, self.val, self.test = [
             TensorDataset(
-                input[splits[s].start : splits[s].stop],
-                output[splits[s].start : splits[s].stop],
+                emiss[splits[s].start : splits[s].stop],
+                laser_params[splits[s].start : splits[s].stop],
+                uids[splits[s].start : splits[s].stop],
             )
             for s in ("train", "val", "test")
         ]
@@ -184,80 +170,6 @@ class ForwardDataModule(pl.LightningDataModule):
             shuffle=False,
             pin_memory=True,
             num_workers=16,
-        )
-
-
-class BackwardDataModule(pl.LightningDataModule):
-    def __init__(self, config: Config) -> None:
-        super().__init__()
-        self.config = config
-        self.batch_size = self.config["backward_batch_size"]
-
-    def setup(self, stage: Optional[str]) -> None:
-
-        output, input = get_data(self.config["use_cache"])
-
-        splits = split(len(input))
-
-        self.train, self.val, self.test = [
-            TensorDataset(
-                input[splits[s].start : splits[s].stop],
-                output[splits[s].start : splits[s].stop],
-            )
-            for s in ("train", "val", "test")
-        ]
-
-    def train_dataloader(self) -> DataLoader:
-        return DataLoader(
-            dataset=self.train,
-            batch_size=self.batch_size,
-            shuffle=True,
-            num_workers=16,
-            pin_memory=True,
-        )
-
-    def val_dataloader(self) -> DataLoader:
-        return DataLoader(
-            dataset=self.val,
-            batch_size=self.batch_size,
-            shuffle=False,
-            pin_memory=True,
-            num_workers=16,
-        )
-
-    def test_dataloader(self) -> DataLoader:
-        return DataLoader(
-            dataset=self.test,
-            batch_size=self.batch_size,
-            shuffle=False,
-            pin_memory=True,
-            num_workers=16,
-        )
-
-    def predict_dataloader(self) -> DataLoader:
-        return DataLoader(
-            dataset=self.val,
-            batch_size=self.batch_size,
-            shuffle=False,
-            pin_memory=True,
-            num_workers=16,
-        )
-
-
-class StepTestDataModule(pl.LightningDataModule):
-    def __init__(self) -> None:
-        super().__init__()
-
-    def setup(self, stage: Optional[str]) -> None:
-        self.test = TensorDataset(utils.step_tensor())
-
-    def predict_dataloader(self) -> DataLoader:
-        return DataLoader(
-            dataset=self.test,
-            batch_size=1_000,
-            shuffle=False,
-            num_workers=16,
-            pin_memory=True,
         )
 
 
@@ -304,3 +216,7 @@ def parse_all() -> None:
 
     for p in Path("/home/alok/minok_ml_data").rglob("*.txt"):
         parse_entry(p)
+
+
+if __name__ == "__main__":
+    df = create_dataset(use_cache=False)

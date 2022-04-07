@@ -17,8 +17,12 @@ wandb = "*"
 test-tube = "*"
 sklearn = "*"
 pudb = "*"
-ray-lightning = "*"
 ray = {extras = ["tune"], version = "*"}
+matplotlib-backend-kitty = "*"
+pytorch-lightning-bolts = "*"
+sklearn-pandas = "*"
+torchtyping = "*"
+typeguard = "*"
 
 [dev-packages]
 

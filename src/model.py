@@ -5,89 +5,35 @@ import random
 from pathlib import Path
 from typing import Optional
 
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-import wandb
+from forwards import ForwardModel
 from torch import nn
 from torch.distributions import Normal, kl_divergence
 from torch.utils.data import DataLoader, TensorDataset
 
 import data
 import nngraph
-import matplotlib.cm as cm
-import matplotlib.pyplot as plt
-from forwards import ForwardModel
+import wandb
 from utils import Config, Stage, rmse, split
 
 
-class BackwardModel(pl.LightningModule):
+class ForwardBackwardModel(pl.LightningModule):
     def __init__(
         self,
         config: Config,
-        forward_model: Optional[ForwardModel] = None,
     ) -> None:
         super().__init__()
-        # self.save_hyperparameters()
+        self.save_hyperparameters()
         self.config = config
-        self.wavelens = torch.load(Path("wavelength.pt"))[0]
-        self.config["num_wavelens"] = len(self.wavelens)
-        if forward_model is None:
-            self.forward_model = None
-        else:
-            self.forward_model = forward_model
-            self.forward_model.freeze()
 
-        self.encoder = nn.Sequential(
-            nn.LazyConv1d(2**11, kernel_size=1),
-            nn.GELU(),
-            nn.Dropout(0.5),
-            nn.LazyConv1d(2**12, kernel_size=1),
-            nn.GELU(),
-            nn.Dropout(0.5),
-            nn.LazyConv1d(2**13, kernel_size=1),
-            nn.GELU(),
-            nn.Dropout(0.5),
-            nn.Flatten(),
-        )
+    def forward(self, x):
 
-        Z = self.config["latent_space_size"]
-        self.mean_head = nn.LazyLinear(Z)
-        self.log_var_head = nn.LazyLinear(Z)
-
-        self.decoder = nn.Sequential(
-            nn.LazyLinear(512),
-            nn.GELU(),
-            nn.LazyLinear(256),
-        )
-        self.continuous_head = nn.LazyLinear(2)
-        self.discrete_head = nn.LazyLinear(12)
-        # XXX this call *must* happen to initialize the lazy layers
-        # TODO fix
-        _dummy_input = torch.rand(2, self.config["num_wavelens"], 1)
-        self.forward(_dummy_input)
-
-    def forward(self, x, mode: Stage = "train"):
-        if x.ndim == 2:
-            x = x.unsqueeze(-1)
-
-        h = self.encoder(x)
-        mean, log_var = self.mean_head(h), self.log_var_head(h)
-
-        std = (log_var / 2).exp()
-
-        dist = Normal(loc=mean, scale=std)
-        zs = dist.rsample()
-
-        decoded = self.decoder(zs)
-
-        laser_params = torch.sigmoid(self.continuous_head(decoded))
-        wattages = F.one_hot(
-            torch.argmax(self.discrete_head(decoded), dim=-1), num_classes=12
-        )
-
+        # TODO kl divergence loss for vq vae
         return {
             "params": torch.cat((laser_params, wattages), dim=-1),
             "dist": dist,
@@ -138,7 +84,7 @@ class BackwardModel(pl.LightningModule):
             x_loss = rmse(x_pred, x)
         loss = x_loss
         self.log("backward/train/x/loss", x_loss, prog_bar=True)
-        
+
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
@@ -191,7 +137,7 @@ class BackwardModel(pl.LightningModule):
             )
             loss = y_loss + kl_loss
             randcheck = np.random.uniform()
-            
+
             if randcheck < 0.02:
                 graph_xys = nngraph.emiss_error_graph(y_pred, y)
                 graph_xs = graph_xys[6]
@@ -201,15 +147,23 @@ class BackwardModel(pl.LightningModule):
                 print("randomly selected, logging image")
                 print(f"loss var: {round(float(loss),5)}")
                 print(f"calculated average RMSE: {round(float(average_RMSE),5)}")
-                wandb.log({f"backwards_train_graph_batch_{_batch_nb}" : wandb.plot.line_series(
-                        xs=graph_xs,
-                        ys=graph_ys,
-                        keys=[f"Average RMSE preds ({round(float(average_run_RMSE),5)})", "Average RMSE real"],
-                        title=f"Typical emiss, backwards val, average RMSE {round(float(rmse(y,y_pred)),5)}, loss {round(float(loss),5)}",
-                        xname="wavelength")})
+                wandb.log(
+                    {
+                        f"backwards_train_graph_batch_{_batch_nb}": wandb.plot.line_series(
+                            xs=graph_xs,
+                            ys=graph_ys,
+                            keys=[
+                                f"Average RMSE preds ({round(float(average_run_RMSE),5)})",
+                                "Average RMSE real",
+                            ],
+                            title=f"Typical emiss, backwards val, average RMSE {round(float(rmse(y,y_pred)),5)}, loss {round(float(loss),5)}",
+                            xname="wavelength",
+                        )
+                    }
+                )
 
         self.log(f"backward/train/loss", loss, prog_bar=True)
-        
+
         return loss
 
     def validation_step(self, batch, batch_nb):
@@ -265,12 +219,20 @@ class BackwardModel(pl.LightningModule):
             average_run_RMSE = graph_xys[8]
             print(f"loss: {round(float(loss),5)}")
             print(f"calculated average RMSE: {round(float(average_RMSE),5)}")
-            wandb.log({f"backwards_val_graph_{batch_nb}" : wandb.plot.line_series(
-                    xs=graph_xs,
-                    ys=graph_ys,
-                    keys=[f"typical pred, RMSE ({round(float(average_run_RMSE),5)})", "typical real emiss"],
-                    title=f"Typical emiss, backwards val, average RMSE {round(float(rmse(y,y_pred)),5)}, loss {round(float(loss),5)}",
-                    xname="wavelength")})
+            wandb.log(
+                {
+                    f"backwards_val_graph_{batch_nb}": wandb.plot.line_series(
+                        xs=graph_xs,
+                        ys=graph_ys,
+                        keys=[
+                            f"typical pred, RMSE ({round(float(average_run_RMSE),5)})",
+                            "typical real emiss",
+                        ],
+                        title=f"Typical emiss, backwards val, average RMSE {round(float(rmse(y,y_pred)),5)}, loss {round(float(loss),5)}",
+                        xname="wavelength",
+                    )
+                }
+            )
         self.log(f"backward/val/loss", loss, prog_bar=True)
 
         return loss
@@ -289,7 +251,7 @@ class BackwardModel(pl.LightningModule):
         loss = x_loss
         self.log("backward/test/x/loss", x_loss, prog_bar=True)
         kl_loss = 0
-        y_pred  = None
+        y_pred = None
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
@@ -304,7 +266,6 @@ class BackwardModel(pl.LightningModule):
                     ),
                 ).mean()
             )
-     
 
             self.log(
                 "backward/train/kl/loss",
@@ -333,12 +294,20 @@ class BackwardModel(pl.LightningModule):
             average_run_RMSE = graph_xys[8]
             print(f"loss: {round(float(loss),5)}")
             print(f"calculated average RMSE: {round(float(average_RMSE),5)}")
-            wandb.log({f"backwards_test_graph_{batch_nb}" : wandb.plot.line_series(
-                    xs=graph_xs,
-                    ys=graph_ys,
-                    keys=[f"typical pred, RMSE ({round(float(average_run_RMSE),5)})", "typical real emiss"],
-                    title=f"Typical emiss, backwards test, average RMSE {round(float(rmse(y,y_pred)),5)}, loss {round(float(loss),5)}",
-                    xname="wavelength")})
+            wandb.log(
+                {
+                    f"backwards_test_graph_{batch_nb}": wandb.plot.line_series(
+                        xs=graph_xs,
+                        ys=graph_ys,
+                        keys=[
+                            f"typical pred, RMSE ({round(float(average_run_RMSE),5)})",
+                            "typical real emiss",
+                        ],
+                        title=f"Typical emiss, backwards test, average RMSE {round(float(rmse(y,y_pred)),5)}, loss {round(float(loss),5)}",
+                        xname="wavelength",
+                    )
+                }
+            )
         return loss
 
     def configure_optimizers(self):

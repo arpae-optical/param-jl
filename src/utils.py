@@ -50,18 +50,12 @@ def step_tensor():
 
 
 class Config(TypedDict):
-    forward_lr: float
-    backward_lr: float
-    latent_space_size: int
-    forward_num_epochs: int
-    backward_num_epochs: int
-    forward_batch_size: int
-    backward_batch_size: int
+    lr: float
+    epochs: int
+    batch_size: int
     use_cache: bool
     kl_coeff: float
     kl_variance_coeff: float
     num_wavelens: int
     prediction_iters:int
-    use_forward:bool
-    load_forward_checkpoint:bool
-    load_backward_checkpoint:bool
+    load_checkpoint:bool

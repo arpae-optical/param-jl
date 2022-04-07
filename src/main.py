@@ -14,51 +14,35 @@ import wandb
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from ray import tune
-from ray_lightning import RayPlugin
-from ray_lightning.tune import TuneReportCallback, get_tune_resources
 from torch import Tensor
 
-from backwards import BackwardModel
-from data import BackwardDataModule, ForwardDataModule, StepTestDataModule
-from forwards import ForwardModel
-from utils import Config
+from data import DataModule
+from model import ForwardBackwardModel
 from nngraph import graph
+from utils import Config
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--forward-num-epochs",
-    "--fe",
+    "--epochs",
+    "-e",
     type=int,
     default=None,
-    help="Number of epochs for forward model",
+    help="Number of epochs.",
 )
+
 parser.add_argument(
-    "--backward-num-epochs",
-    "--be",
+    "--batch-size",
+    "--bs",
     type=int,
     default=None,
-    help="Number of epochs for backward model",
 )
 parser.add_argument(
-    "--forward-batch-size",
-    "--fbs",
-    type=int,
-    default=None,
-    help="Batch size for forward model",
-)
-parser.add_argument(
-    "--num-samples",
+    "--runs",
     type=int,
     default=1,
-    help="How many runs for optimization",
+    help="How many runs ",
 )
-parser.add_argument(
-    "--backward-batch-size",
-    "--bbs",
-    type=int,
-    default=None,
-    help="Batch size for backward model",
-)
+
 parser.add_argument(
     "--prediction-iters",
     type=int,
@@ -73,50 +57,34 @@ parser.add_argument(
     help="Load saved dataset (avoids 1 minute startup cost of fetching data from database, useful for quick tests).",
 )
 parser.add_argument(
-    "--use-forward",
-    type=eval,
-    choices=[True, False],
-    default=True,
-    help="Whether to use a forward model at all",
-)
-parser.add_argument(
-    "--load-forward-checkpoint",
+    "--load-checkpoint",
     type=eval,
     choices=[True, False],
     default=False,
-    help="Load trained forward model. Useful for validation. Requires model to already be trained and saved.",
-)
-parser.add_argument(
-    "--load-backward-checkpoint",
-    type=eval,
-    choices=[True, False],
-    default=False,
-    help="Load trained backward model. Useful for validation. Requires model to already be trained and saved.",
+    help="Load trained model. Useful for validation. Requires model to already be trained and saved.",
 )
 args = parser.parse_args()
 
 
 def main(config: Config) -> None:
+    config["save_dir"].mkdir(parents=True, exist_ok=True)
+    run = wandb.init()
 
-    forward_trainer = pl.Trainer(
-        max_epochs=config["forward_num_epochs"],
+    trainer = pl.Trainer(
+        max_epochs=config["epochs"],
         logger=[
             WandbLogger(
-                name="Forward laser params",
-                save_dir="wandb_logs/forward",
+                name="Laser params",
+                save_dir="/data/alok/laser/wandb_logs",
                 offline=False,
                 project="Laser Forward",
                 log_model=True,
             ),
-            TensorBoardLogger(
-                save_dir="test_tube_logs/forward",
-                name="Forward",
-            ),
         ],
         callbacks=[
             ModelCheckpoint(
-                monitor="forward/val/loss",
-                dirpath="weights/forward",
+                monitor="val/loss",
+                dirpath="/data/alok/laser/weights",
                 save_top_k=1,
                 mode="min",
                 save_last=True,
@@ -128,118 +96,63 @@ def main(config: Config) -> None:
         # overfit_batches=1,
         # track_grad_norm=2,
         weights_summary="full",
-        check_val_every_n_epoch=min(3, config["backward_num_epochs"]-1),
+        check_val_every_n_epoch=min(3, config["epochs"] - 1),
         gradient_clip_val=0.5,
-        log_every_n_steps=min(3, config["forward_num_epochs"]-1),
+        log_every_n_steps=min(3, config["epochs"] - 1),
     )
 
-    backward_trainer = pl.Trainer(
-        max_epochs=config["backward_num_epochs"],
-        logger=[
-            WandbLogger(
-                name="Backward laser params",
-                save_dir="wandb_logs/backward",
-                offline=False,
-                project="Laser Backward",
-                log_model=True,
-            ),
-            TensorBoardLogger(save_dir="test_tube_logs/backward", name="Backward"),
-        ],
-        callbacks=[
-            ModelCheckpoint(
-                monitor="backward/val/loss",
-                dirpath="weights/backward",
-                save_top_k=1,
-                mode="min",
-                save_last=True,
-            ),
-            pl.callbacks.progress.TQDMProgressBar(refresh_rate=10),
-        ],
-        gpus=1,
-        precision=32,
-        weights_summary="full",
-        check_val_every_n_epoch=min(3, config["backward_num_epochs"]-1),
-        gradient_clip_val=0.5,
-        log_every_n_steps=min(3, config["backward_num_epochs"]-1),
-    )
-
-    forward_data_module = ForwardDataModule(config)
-    backward_data_module = BackwardDataModule(config)
-    step_data_module = StepTestDataModule()
-
-    # TODO: load checkpoint for both forward and back
-    if config["use_forward"]:
-        forward_model = ForwardModel(config)
-        if not config["load_forward_checkpoint"]:
-            forward_trainer.fit(model=forward_model, datamodule=forward_data_module)
-
-        forward_trainer.test(
-            model=forward_model,
-            ckpt_path=str(
-                max(
-                    Path("weights/forward").glob("*.ckpt"),
-                    key=os.path.getctime,
-                )
-            ),
-            datamodule=forward_data_module,
-        )
-        backward_model = BackwardModel(config=config, forward_model=forward_model)
-    else:
-        backward_model = BackwardModel(config=config, forward_model=None)
-
-    if not config["load_backward_checkpoint"]:
-        backward_trainer.fit(model=backward_model, datamodule=backward_data_module)
-    backward_trainer.test(
-        model=backward_model,
+    data_module = DataModule(config)
+    model = ForwardBackwardModel(config=config)
+    if not config["load_checkpoint"]:
+        trainer.fit(model=model, datamodule=data_module)
+    trainer.test(
+        model=model,
         ckpt_path=str(
             max(
-                Path("weights/backward").glob("*.ckpt"),
+                config["save_dir"] / "weights".glob("*.ckpt"),
                 key=os.path.getctime,
             )
         ),
-        datamodule=backward_data_module,
+        datamodule=data_module,
     )
-    pred_iters = config["prediction_iters"]
-    latent = config["latent_space_size"]
-    variance = config["kl_variance_coeff"]
-    params_str = f"pred_iter_{pred_iters}_latent_size_{latent}_k1_variance_{variance}"
-    save_str = f"src/{params_str}"
 
-
-    for i in range(config["prediction_iters"]):
-        preds: List[Tensor] = backward_trainer.predict(
-            model=backward_model,
+    for _ in range(config["prediction_iters"]):
+        preds: List[Tensor] = trainer.predict(
+            model=model,
             ckpt_path=str(
                 max(
-                    Path("weights/backward").glob("*.ckpt"),
+                    (config["save_dir"] / "weights").glob("*.ckpt"),
                     key=os.path.getctime,
                 )
             ),
-            datamodule=backward_data_module,
+            datamodule=data_module,
             return_predictions=True,
         )
-        torch.save(preds, save_str)
+        save_filename = (
+            config["save_dir"]
+            / f"src/pred_iter_{config['prediction_iters']}_k1_variance_{config['kl_variance_coeff']}"
+        )
+        # TODO save artifact (maybe without upload if big)
+        torch.save(preds, save_filename)
+        artifact = wandb.Artifact(save_filename.name, type="result")
+        artifact.add_file(save_filename)
+        run.log_artifact(artifact)
+
     wandb.finish()
 
-    # graph(residualsflag = True, predsvstrueflag = True, index_str = params_str, target_str = save_str)
 
 # The `or` idiom allows overriding values from the command line.
 config: Config = {
-    # "forward_lr": tune.loguniform(1e-7, 1e-4),
-    "forward_lr": 1e-6,
-    "backward_lr": tune.loguniform(1e-6, 1e-5),
-    "latent_space_size": tune.qlograndint(2**5, 2**10, 1),
-    "forward_num_epochs": args.forward_num_epochs or tune.choice([1600]),
-    "backward_num_epochs": args.backward_num_epochs or tune.choice([2500]),
-    "forward_batch_size": args.forward_batch_size or tune.choice([2**9]),
-    "backward_batch_size": args.backward_batch_size or tune.choice([2**9]),
+    "lr": 1e-6,
+    "epochs": args.epochs or tune.choice([4000]),
+    "batch_size": args.batch_size or tune.choice([2**9]),
     "use_cache": args.use_cache,
     "kl_coeff": tune.loguniform(2**-1, 2**0),
     "kl_variance_coeff": tune.loguniform(2**-12, 2**0),
     "prediction_iters": args.prediction_iters,
-    "use_forward": args.use_forward,
-    "load_forward_checkpoint": args.load_forward_checkpoint,
-    "load_backward_checkpoint": args.load_backward_checkpoint,
+    "load_checkpoint": args.load_checkpoint,
+    "num_wavelens": 300,
+    "save_dir": Path("/data/alok/laser"),
 }
 
 
