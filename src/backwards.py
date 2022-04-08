@@ -269,7 +269,6 @@ class BackwardModel(pl.LightningModule):
                 prog_bar=True,
             )
             loss = y_loss + kl_loss
-            print("before torch.save")
             torch.save(x, "/data/alok/laser/params_true_back.pt")
             torch.save(y, "/data/alok/laser/emiss_true_back.pt")
             torch.save(y_pred, "/data/alok/laser/emiss_pred.pt")
