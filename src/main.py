@@ -91,6 +91,7 @@ parser.add_argument(
     default=False,
     help="Load trained backward model. Useful for validation. Requires model to already be trained and saved.",
 )
+
 args = parser.parse_args()
 
 
@@ -126,7 +127,7 @@ def main(config: Config) -> None:
         # overfit_batches=1,
         # track_grad_norm=2,
         weights_summary="full",
-        check_val_every_n_epoch=min(3, config["backward_num_epochs"] - 1),
+        check_val_every_n_epoch=min(3, config["forward_num_epochs"] - 1),
         gradient_clip_val=0.5,
         log_every_n_steps=min(3, config["forward_num_epochs"] - 1),
     )

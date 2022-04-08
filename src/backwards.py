@@ -262,7 +262,7 @@ class BackwardModel(pl.LightningModule):
                 kl_loss,
                 prog_bar=True,
             )
-
+            breakpoint()
             self.log(
                 "backward/test/y/loss",
                 y_loss,

@@ -178,6 +178,9 @@ class ForwardDataModule(pl.LightningDataModule):
             )
             for s in ("train", "val", "test")
         ]
+        torch.save(self.train, "/data/alok/laser/forward_train_true.pt")
+        torch.save(self.val, "/data/alok/laser/forward_val_true.pt")
+        torch.save(self.test, "/data/alok/laser/forward_test_true.pt")
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
@@ -231,6 +234,9 @@ class BackwardDataModule(pl.LightningDataModule):
             for s in ("train", "val", "test")
         ]
 
+        torch.save(self.train, "/data/alok/laser/backward_train_true.pt")
+        torch.save(self.val, "/data/alok/laser/backward_val_true.pt")
+        torch.save(self.test, "/data/alok/laser/backward_test_true.pt")
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.train,
