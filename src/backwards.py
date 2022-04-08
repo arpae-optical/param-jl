@@ -274,7 +274,6 @@ class BackwardModel(pl.LightningModule):
             torch.save(y_pred, "/data/alok/laser/emiss_pred.pt")
             torch.save(x_pred, "/data/alok/laser/param_pred.pt")
 
-            
         nngraph.save_integral_emiss_point(
             y_pred, y, "backwards_test_points.txt", all_points=True
         )
