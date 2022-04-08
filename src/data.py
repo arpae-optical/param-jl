@@ -36,9 +36,10 @@ def get_data(
         ]
     ):
         data = torch.load(Path("/data/alok/laser/data.pt"))
-        norm_laser_params, interp_emissivities = (
+        norm_laser_params, interp_emissivities, uids = (
             data["normalized_laser_params"],
-            data["interpolated_emiss"],
+            data["interpolated_emissivity"],
+            data["uids"],
         )
     else:
         client = pymongo.MongoClient(
@@ -177,6 +178,7 @@ class ForwardDataModule(pl.LightningDataModule):
             )
             for s in ("train", "val", "test")
         ]
+
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.train,
