@@ -32,10 +32,10 @@ def get_data(
     if all(
         [
             use_cache,
-            Path("data.pt").exists(),
+            Path("/data/alok/laser/data.pt").exists(),
         ]
     ):
-        data = torch.load(Path("data.pt"))
+        data = torch.load(Path("/data/alok/laser/data.pt"))
         norm_laser_params, interp_emissivities = (
             data["normalized_laser_params"],
             data["interpolated_emiss"],
@@ -177,7 +177,6 @@ class ForwardDataModule(pl.LightningDataModule):
             )
             for s in ("train", "val", "test")
         ]
-
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
             dataset=self.train,
@@ -325,5 +324,5 @@ def parse_all() -> None:
         db = client.propopt.laser_samples2
         db.insert(entry)
 
-    for p in Path("/home/alok/minok_ml_data").rglob("*.txt"):
+    for p in Path("/data/alok/laser/minok_ml_data").rglob("*.txt"):
         parse_entry(p)

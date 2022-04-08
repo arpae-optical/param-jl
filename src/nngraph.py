@@ -146,6 +146,9 @@ def emiss_error_graph(predicted_emissivity, real_emissivity, wavelen_num = 300):
 
     return([best_RMSE_pred, best_RMSE_real, worst_RMSE_pred, worst_RMSE_real, average_RMSE_pred, average_RMSE_real, wavelength, RMSE_total, RMSE_average])
 
+def training_set_mean_vs_stdev():
+    train_data = ...
+
 
 def graph(residualsflag, predsvstrueflag, target_str, wavelen_num = 300, index_str="default"):
     # importing the data

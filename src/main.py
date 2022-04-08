@@ -101,20 +101,20 @@ def main(config: Config) -> None:
         logger=[
             WandbLogger(
                 name="Forward laser params",
-                save_dir="wandb_logs/forward",
+                save_dir="/data/alok/laser/wandb_logs/forward",
                 offline=False,
                 project="Laser Forward",
                 log_model=True,
             ),
             TensorBoardLogger(
-                save_dir="test_tube_logs/forward",
+                save_dir="/data/alok/laser/test_tube_logs/forward",
                 name="Forward",
             ),
         ],
         callbacks=[
             ModelCheckpoint(
                 monitor="forward/val/loss",
-                dirpath="weights/forward",
+                dirpath="/data/alok/laser/weights/forward",
                 save_top_k=1,
                 mode="min",
                 save_last=True,
@@ -136,17 +136,17 @@ def main(config: Config) -> None:
         logger=[
             WandbLogger(
                 name="Backward laser params",
-                save_dir="wandb_logs/backward",
+                save_dir="/data/alok/laser/wandb_logs/backward",
                 offline=False,
                 project="Laser Backward",
                 log_model=True,
             ),
-            TensorBoardLogger(save_dir="test_tube_logs/backward", name="Backward"),
+            TensorBoardLogger(save_dir="/data/alok/laser/test_tube_logs/backward", name="Backward"),
         ],
         callbacks=[
             ModelCheckpoint(
                 monitor="backward/val/loss",
-                dirpath="weights/backward",
+                dirpath="/data/alok/laser/weights/backward",
                 save_top_k=1,
                 mode="min",
                 save_last=True,
@@ -174,7 +174,7 @@ def main(config: Config) -> None:
             model=forward_model,
             ckpt_path=str(
                 max(
-                    Path("weights/forward").glob("*.ckpt"),
+                    Path("/data/alok/laser/weights/forward").glob("*.ckpt"),
                     key=os.path.getctime,
                 )
             ),
@@ -190,7 +190,7 @@ def main(config: Config) -> None:
         model=backward_model,
         ckpt_path=str(
             max(
-                Path("weights/backward").glob("*.ckpt"),
+                Path("/data/alok/laser/weights/backward").glob("*.ckpt"),
                 key=os.path.getctime,
             )
         ),
@@ -207,7 +207,7 @@ def main(config: Config) -> None:
             model=backward_model,
             ckpt_path=str(
                 max(
-                    Path("weights/backward").glob("*.ckpt"),
+                    Path("/data/alok/laser/weights/backward").glob("*.ckpt"),
                     key=os.path.getctime,
                 )
             ),

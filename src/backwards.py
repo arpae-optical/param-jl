@@ -273,10 +273,10 @@ class BackwardModel(pl.LightningModule):
             )
             loss = y_loss + kl_loss
 
-            torch.save(x, "params_true_back.pt")
-            torch.save(y, "emiss_true_back.pt")
-            torch.save(y_pred, "emiss_pred.pt")
-            torch.save(x_pred, "param_pred.pt")
+            torch.save(x, "/data/alok/laser/params_true_back.pt")
+            torch.save(y, "/data/alok/laser/emiss_true_back.pt")
+            torch.save(y_pred, "/data/alok/laser/emiss_pred.pt")
+            torch.save(x_pred, "/data/alok/laser/param_pred.pt")
         return loss
 
     def configure_optimizers(self):
