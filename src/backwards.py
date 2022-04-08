@@ -242,9 +242,6 @@ class BackwardModel(pl.LightningModule):
         self.log("backward/test/x/loss", x_loss, prog_bar=True)
         kl_loss = 0
         y_pred = None
-        nngraph.save_integral_emiss_point(
-            y_pred, y, "backwards_test_points.txt", all_points=True
-        )
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
@@ -272,11 +269,16 @@ class BackwardModel(pl.LightningModule):
                 prog_bar=True,
             )
             loss = y_loss + kl_loss
-
+            print("before torch.save")
             torch.save(x, "/data/alok/laser/params_true_back.pt")
             torch.save(y, "/data/alok/laser/emiss_true_back.pt")
             torch.save(y_pred, "/data/alok/laser/emiss_pred.pt")
             torch.save(x_pred, "/data/alok/laser/param_pred.pt")
+
+            
+        nngraph.save_integral_emiss_point(
+            y_pred, y, "backwards_test_points.txt", all_points=True
+        )
         return loss
 
     def configure_optimizers(self):
