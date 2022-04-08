@@ -126,7 +126,7 @@ def main(config: Config) -> None:
         # overfit_batches=1,
         # track_grad_norm=2,
         weights_summary="full",
-        check_val_every_n_epoch=min(3, config["backward_num_epochs"] - 1),
+        check_val_every_n_epoch=min(3, config["forward_num_epochs"] - 1),
         gradient_clip_val=0.5,
         log_every_n_steps=min(3, config["forward_num_epochs"] - 1),
     )
@@ -141,7 +141,9 @@ def main(config: Config) -> None:
                 project="Laser Backward",
                 log_model=True,
             ),
-            TensorBoardLogger(save_dir="/data/alok/laser/test_tube_logs/backward", name="Backward"),
+            TensorBoardLogger(
+                save_dir="/data/alok/laser/test_tube_logs/backward", name="Backward"
+            ),
         ],
         callbacks=[
             ModelCheckpoint(
@@ -241,17 +243,7 @@ config: Config = {
 }
 
 
-for i in range(1):
-    # The `hasattr` lets us use Ray Tune just to provide hyperparameters.
-    try:
-        concrete_config: Config = Config(
-            {k: (v.sample() if hasattr(v, "sample") else v) for k, v in config.items()}
-        )
-        main(concrete_config)
-    except:
-        try:
-            # Don't want experiments bleeding into each other.
-            wandb.finish()
-        except:
-            continue
-        continue
+concrete_config: Config = Config(
+    {k: (v.sample() if hasattr(v, "sample") else v) for k, v in config.items()}
+)
+main(concrete_config)
