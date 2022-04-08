@@ -142,7 +142,9 @@ def main(config: Config) -> None:
                 project="Laser Backward",
                 log_model=True,
             ),
-            TensorBoardLogger(save_dir="/data/alok/laser/test_tube_logs/backward", name="Backward"),
+            TensorBoardLogger(
+                save_dir="/data/alok/laser/test_tube_logs/backward", name="Backward"
+            ),
         ],
         callbacks=[
             ModelCheckpoint(
@@ -242,17 +244,7 @@ config: Config = {
 }
 
 
-for i in range(1):
-    # The `hasattr` lets us use Ray Tune just to provide hyperparameters.
-    try:
-        concrete_config: Config = Config(
-            {k: (v.sample() if hasattr(v, "sample") else v) for k, v in config.items()}
-        )
-        main(concrete_config)
-    except:
-        try:
-            # Don't want experiments bleeding into each other.
-            wandb.finish()
-        except:
-            continue
-        continue
+concrete_config: Config = Config(
+    {k: (v.sample() if hasattr(v, "sample") else v) for k, v in config.items()}
+)
+main(concrete_config)
