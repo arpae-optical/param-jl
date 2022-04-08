@@ -147,7 +147,7 @@ def get_data(
                 "interpolated_wavelength": interp_wavelengths,
                 "normalized_laser_params": norm_laser_params,
             },
-            Path("data.pt"),
+            Path("/data/alok/laser/data.pt"),
         )
 
     return norm_laser_params, interp_emissivities, uids
