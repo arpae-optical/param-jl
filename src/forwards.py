@@ -8,11 +8,23 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-from torch import nn
+from einops import asnumpy, parse_shape, rearrange, reduce
+from einops.layers.torch import EinMix as Mix
+from einops.layers.torch import Rearrange, Reduce
+from torch import einsum, nn
 
 import nngraph
 import wandb
 from utils import Config, rmse
+
+
+class View(nn.Module):
+    def __init__(self, shape) -> None:
+        super().__init__()
+        self.shape = (shape,)  # extra comma to allow handling integers as args
+
+    def forward(self, x):
+        return x.view(*self.shape)
 
 
 class ForwardModel(pl.LightningModule):
@@ -24,32 +36,23 @@ class ForwardModel(pl.LightningModule):
         self.config["num_wavelens"] = len(self.wavelens)
         # self.save_hyperparameters()
         self.model = nn.Sequential(
-            nn.LazyConv1d(2**11, kernel_size=1),
-            nn.GELU(),
-            nn.Dropout(0.5),
-            nn.LazyBatchNorm1d(),
-            nn.LazyConv1d(2**12, kernel_size=1),
-            nn.GELU(),
-            nn.Dropout(0.5),
-            nn.LazyBatchNorm1d(),
-            nn.LazyConv1d(2**13, kernel_size=1),
-            nn.GELU(),
-            nn.Dropout(0.5),
-            nn.LazyBatchNorm1d(),
+            Rearrange("b c -> b 1 c"),
+            nn.TransformerEncoder(
+                encoder_layer=nn.TransformerEncoderLayer(
+                    d_model=2 + 12, nhead=7, activation=F.gelu, batch_first=True
+                ),
+                num_layers=6,
+            ),
             nn.Flatten(),
             nn.LazyLinear(self.config["num_wavelens"]),
             nn.Sigmoid(),
         )
 
-        # self.model = nn.Sequential()
         # TODO how to reverse the *data* in the Linear layers easily? transpose?
         # XXX This call *must* happen to initialize the lazy layers
-        self.forward(torch.rand(2, 14, 1))
+        self.forward(torch.rand(2, 14))
 
     def forward(self, x):
-        # add dummy dim
-        if x.ndim == 2:
-            x = x.unsqueeze(-1)
         return self.model(x)
 
     def training_step(self, batch, batch_nb):
