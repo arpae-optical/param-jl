@@ -32,9 +32,9 @@ class ForwardModel(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
-        self.config["num_wavelens"] = len(
-            torch.load(Path("/data/alok/laser/data.pt"))["interpolated_wavelength"][0]
-        )
+        # self.config["num_wavelens"] = len(
+        #     torch.load(Path("/data/alok/laser/data.pt"))["interpolated_wavelength"][0]
+        # )
         # self.save_hyperparameters()
         self.model = nn.Sequential(
             Rearrange("b c -> b 1 c"),
