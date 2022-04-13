@@ -31,6 +31,12 @@ parser.add_argument(
     help="Number of epochs for forward model",
 )
 parser.add_argument(
+    "--num-wavelens",
+    type=int,
+    default=300,
+    help="Number of wavelens to interpolate to",
+)
+parser.add_argument(
     "--backward-num-epochs",
     "--be",
     type=int,
@@ -98,19 +104,15 @@ config: Config = {
     # "forward_lr": tune.loguniform(1e-7, 1e-4),
     "forward_lr": 1e-6,
     "backward_lr": tune.loguniform(1e-6, 1e-5),
-    "latent_space_size": 1024,
     "forward_num_epochs": args.forward_num_epochs or tune.choice([1600]),
     "backward_num_epochs": args.backward_num_epochs or tune.choice([2500]),
     "forward_batch_size": args.forward_batch_size or tune.choice([2**9]),
     "backward_batch_size": args.backward_batch_size or tune.choice([2**9]),
     "use_cache": args.use_cache,
-    "kl_coeff": tune.loguniform(2**-1, 2**0),
-    "kl_variance_coeff": tune.loguniform(2**-12, 2**0),
-    "prediction_iters": args.prediction_iters,
     "use_forward": args.use_forward,
     "load_forward_checkpoint": args.load_forward_checkpoint,
     "load_backward_checkpoint": args.load_backward_checkpoint,
-    "num_wavelens": 1_500,
+    "num_wavelens": args.num_wavelens,
 }
 
 concrete_config: Config = Config(
@@ -223,25 +225,22 @@ def main(config: Config) -> None:
         ),
         datamodule=backward_data_module,
     )
-    pred_iters = config["prediction_iters"]
-    latent = config["latent_space_size"]
-    variance = config["kl_variance_coeff"]
-    params_str = f"pred_iter_{pred_iters}_latent_size_{latent}_k1_variance_{variance}"
-    save_str = f"src/{params_str}"
 
-    for i in range(config["prediction_iters"]):
-        preds: List[Tensor] = backward_trainer.predict(
-            model=backward_model,
-            ckpt_path=str(
-                max(
-                    Path("/data/alok/laser/weights/backward").glob("*.ckpt"),
-                    key=os.path.getctime,
-                )
-            ),
-            datamodule=backward_data_module,
-            return_predictions=True,
-        )
-        torch.save(preds, save_str)
+    preds: dict = backward_trainer.predict(
+        model=backward_model,
+        ckpt_path=str(
+            max(
+                Path("/data/alok/laser/weights/backward").glob("*.ckpt"),
+                key=os.path.getctime,
+            )
+        ),
+        datamodule=backward_data_module,
+        return_predictions=True,
+    )
+    torch.save(
+        preds,
+        Path(f"/data/alok/laser/preds.pt"),
+    )
     wandb.finish()
 
     # graph(residualsflag = True, predsvstrueflag = True, index_str = params_str, target_str = save_str)
