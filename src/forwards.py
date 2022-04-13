@@ -42,7 +42,7 @@ class ForwardModel(pl.LightningModule):
                 encoder_layer=nn.TransformerEncoderLayer(
                     d_model=2 + 12, nhead=7, activation=F.gelu, batch_first=True
                 ),
-                num_layers=6,
+                num_layers=20,
             ),
             nn.Flatten(),
             nn.LazyLinear(self.config["num_wavelens"]),

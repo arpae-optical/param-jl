@@ -47,11 +47,11 @@ class BackwardModel(pl.LightningModule):
             nn.TransformerEncoder(
                 encoder_layer=nn.TransformerEncoderLayer(
                     d_model=self.config["num_wavelens"],
-                    nhead=10,
+                    nhead=25,
                     activation=F.gelu,
                     batch_first=True,
                 ),
-                num_layers=6,
+                num_layers=12,
             ),
             nn.Flatten(),
         )
