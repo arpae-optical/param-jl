@@ -11,8 +11,10 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-from torch import nn
-from torch.distributions import Normal, kl_divergence
+from einops import asnumpy, parse_shape, rearrange, reduce
+from einops.layers.torch import EinMix as Mix
+from einops.layers.torch import Rearrange, Reduce
+from torch import einsum, nn
 from torch.utils.data import DataLoader, TensorDataset
 
 import data
@@ -31,69 +33,46 @@ class BackwardModel(pl.LightningModule):
         super().__init__()
         # self.save_hyperparameters()
         self.config = config
-        self.wavelens = torch.load(Path("wavelength.pt"))[0]
-        self.config["num_wavelens"] = len(self.wavelens)
+        self.config["num_wavelens"] = len(
+            torch.load(Path("/data/alok/laser/data.pt"))["interpolated_wavelength"][0]
+        )
         if forward_model is None:
             self.forward_model = None
         else:
             self.forward_model = forward_model
             self.forward_model.freeze()
 
-        self.encoder = nn.Sequential(
-            nn.LazyConv1d(2**11, kernel_size=1),
-            nn.GELU(),
-            nn.Dropout(0.5),
-            nn.LazyConv1d(2**12, kernel_size=1),
-            nn.GELU(),
-            nn.Dropout(0.5),
-            nn.LazyConv1d(2**13, kernel_size=1),
-            nn.GELU(),
-            nn.Dropout(0.5),
+        self.trunk = nn.Sequential(
+            Rearrange("b c -> b 1 c"),
+            nn.TransformerEncoder(
+                encoder_layer=nn.TransformerEncoderLayer(
+                    d_model=self.config["num_wavelens"],
+                    nhead=10,
+                    activation=F.gelu,
+                    batch_first=True,
+                ),
+                num_layers=6,
+            ),
             nn.Flatten(),
         )
 
-        Z = self.config["latent_space_size"]
-        self.mean_head = nn.LazyLinear(Z)
-        self.log_var_head = nn.LazyLinear(Z)
-
-        self.decoder = nn.Sequential(
-            nn.LazyLinear(512),
-            nn.GELU(),
-            nn.LazyLinear(256),
-        )
         self.continuous_head = nn.LazyLinear(2)
         self.discrete_head = nn.LazyLinear(12)
         # XXX this call *must* happen to initialize the lazy layers
-        # TODO fix
-        _dummy_input = torch.rand(2, self.config["num_wavelens"], 1)
+        _dummy_input = torch.rand(2, self.config["num_wavelens"])
         self.forward(_dummy_input)
 
-    def forward(self, x, mode: Stage = "train"):
-        if x.ndim == 2:
-            x = x.unsqueeze(-1)
-
-        h = self.encoder(x)
-        mean, log_var = self.mean_head(h), self.log_var_head(h)
-
-        std = (log_var / 2).exp()
-
-        dist = Normal(loc=mean, scale=std)
-        zs = dist.rsample()
-
-        decoded = self.decoder(zs)
-
-        laser_params = torch.sigmoid(self.continuous_head(decoded))
+    def forward(self, x):
+        h = self.trunk(x)
+        laser_params = torch.sigmoid(self.continuous_head(h))
         wattages = F.one_hot(
-            torch.argmax(self.discrete_head(decoded), dim=-1), num_classes=12
+            torch.argmax(self.discrete_head(h), dim=-1), num_classes=12
         )
 
-        return {
-            "params": torch.cat((laser_params, wattages), dim=-1),
-            "dist": dist,
-        }
+        return torch.cat((laser_params, wattages), dim=-1)
 
     def predict_step(self, batch, _batch_nb):
-        out = {"params": [], "pred_emiss": [], "pred_loss": []}
+        out = {"params": None, "pred_emiss": None, "pred_loss": None}
         # If step data, there's no corresponding laser params
         try:
             (y,) = batch  # y is emiss
@@ -102,27 +81,14 @@ class BackwardModel(pl.LightningModule):
             out["true_params"] = x
             out["uids"] = uids
         out["true_emiss"] = y
-        y_pred = None
-        for pred in [self(y) for _ in range(50)]:
-            x_pred, dist = pred["params"], pred["dist"]
-            out["params"].append(x_pred)
-            if self.forward_model is not None:
-                y_pred = self.forward_model(x_pred)
-                out["pred_emiss"].append(y_pred)
-                y_loss = rmse(y_pred, y)
-                out["pred_loss"].append(y_loss)
-                kl_loss = (
-                    self.config["kl_coeff"]
-                    * kl_divergence(
-                        dist,
-                        Normal(
-                            torch.zeros_like(dist.mean),
-                            self.config["kl_variance_coeff"]
-                            * torch.ones_like(dist.variance),
-                        ),
-                    ).mean()
-                )
-                loss = y_loss + kl_loss
+        x_pred = self(y)
+        out["params"] = x_pred
+        if self.forward_model is not None:
+            y_pred = self.forward_model(x_pred)
+            out["pred_emiss"] = y_pred
+            y_loss = rmse(y_pred, y)
+            out["pred_loss"] = y_loss
+            loss = y_loss
         return out
 
     def training_step(self, batch, _batch_nb):
@@ -130,42 +96,21 @@ class BackwardModel(pl.LightningModule):
         y, x, uids = (emiss, laser_params, uids) = batch
 
         x_pred = self(y)
-        x_pred, dist = x_pred["params"], x_pred["dist"]
-        if self.forward_model is None:
-            with torch.no_grad():
-                x_loss = rmse(x_pred, x)
-        else:
+        with torch.no_grad():
             x_loss = rmse(x_pred, x)
-        loss = x_loss
-        self.log("backward/train/x/loss", x_loss, prog_bar=True)
+            self.log("backward/train/x/loss", x_loss, prog_bar=True)
 
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
-            kl_loss = (
-                self.config["kl_coeff"]
-                * kl_divergence(
-                    dist,
-                    Normal(
-                        torch.zeros_like(dist.mean),
-                        self.config["kl_variance_coeff"]
-                        * torch.ones_like(dist.variance),
-                    ),
-                ).mean()
-            )
-
-            self.log(
-                "backward/train/kl/loss",
-                kl_loss,
-                prog_bar=True,
-            )
 
             self.log(
                 "backward/train/y/loss",
                 y_loss,
                 prog_bar=True,
             )
-            loss = y_loss + kl_loss
+
+            loss = y_loss
 
         if self.current_epoch == 3994:
             nngraph.save_integral_emiss_point(
@@ -180,45 +125,21 @@ class BackwardModel(pl.LightningModule):
         y, x, uids = (emiss, laser_params, uids) = batch
 
         x_pred = self(y)
-        x_pred, dist = x_pred["params"], x_pred["dist"]
-        if self.forward_model is None:
-            with torch.no_grad():
-                x_loss = rmse(x_pred, x)
-        else:
+        with torch.no_grad():
             x_loss = rmse(x_pred, x)
-        loss = x_loss
-        self.log("backward/val/x/loss", x_loss, prog_bar=True)
-        kl_loss = 0
-        y_pred = None
+            self.log("backward/val/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
-
-            kl_loss = (
-                self.config["kl_coeff"]
-                * kl_divergence(
-                    dist,
-                    Normal(
-                        torch.zeros_like(dist.mean),
-                        self.config["kl_variance_coeff"]
-                        * torch.ones_like(dist.variance),
-                    ),
-                ).mean()
-            )
-
-            self.log(
-                "backward/train/kl/loss",
-                kl_loss,
-                prog_bar=True,
-            )
 
             self.log(
                 "backward/val/y/loss",
                 y_loss,
                 prog_bar=True,
             )
-            loss = y_loss + kl_loss
-        randcheck = np.random.uniform()
+
+            loss = y_loss
+
         if self.current_epoch > 3994:
             nngraph.save_integral_emiss_point(
                 y_pred, y, "backwards_val_points.txt", all_points=True
@@ -232,43 +153,20 @@ class BackwardModel(pl.LightningModule):
         y, x, uids = (emiss, laser_params, uids) = batch
 
         x_pred = self(y)
-        x_pred, dist = x_pred["params"], x_pred["dist"]
-        if self.forward_model is None:
-            with torch.no_grad():
-                x_loss = rmse(x_pred, x)
-        else:
+        with torch.no_grad():
             x_loss = rmse(x_pred, x)
-        loss = x_loss
-        self.log("backward/test/x/loss", x_loss, prog_bar=True)
-        kl_loss = 0
-        y_pred = None
+            self.log("backward/test/x/loss", x_loss, prog_bar=True)
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
-            kl_loss = (
-                self.config["kl_coeff"]
-                * kl_divergence(
-                    dist,
-                    Normal(
-                        torch.zeros_like(dist.mean),
-                        self.config["kl_variance_coeff"]
-                        * torch.ones_like(dist.variance),
-                    ),
-                ).mean()
-            )
-
-            self.log(
-                "backward/train/kl/loss",
-                kl_loss,
-                prog_bar=True,
-            )
 
             self.log(
                 "backward/test/y/loss",
                 y_loss,
                 prog_bar=True,
             )
-            loss = y_loss + kl_loss
+            loss = y_loss
+
             torch.save(x, "/data/alok/laser/params_true_back.pt")
             torch.save(y, "/data/alok/laser/emiss_true_back.pt")
             torch.save(y_pred, "/data/alok/laser/emiss_pred.pt")
