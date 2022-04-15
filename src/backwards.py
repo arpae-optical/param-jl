@@ -35,7 +35,7 @@ class BackwardModel(pl.LightningModule):
         # self.save_hyperparameters()
         self.config = config
         # self.config["num_wavelens"] = len(
-        #     torch.load(Path("/data/alok/laser/data.pt"))["interpolated_wavelength"][0]
+        #     torch.load(Path("/data-new/alok/laser/data.pt"))["interpolated_wavelength"][0]
         # )
         if forward_model is None:
             self.forward_model = None
@@ -119,7 +119,7 @@ class BackwardModel(pl.LightningModule):
             nngraph.save_integral_emiss_point(
                 y_pred,
                 y,
-                "/data/alok/laser/backwards_train_points.txt",
+                "/data-new/alok/laser/backwards_train_points.txt",
                 all_points=True,
             )
         self.log(f"backward/train/loss", loss, prog_bar=True)
@@ -148,7 +148,7 @@ class BackwardModel(pl.LightningModule):
 
         if self.current_epoch == self.config["backward_num_epochs"] - 5:
             nngraph.save_integral_emiss_point(
-                y_pred, y, "/data/alok/laser/backwards_val_points.txt", all_points=True
+                y_pred, y, "/data-new/alok/laser/backwards_val_points.txt", all_points=True
             )
         self.log(f"backward/val/loss", loss, prog_bar=True)
 
@@ -173,13 +173,13 @@ class BackwardModel(pl.LightningModule):
             )
             loss = y_loss
 
-            torch.save(x, "/data/alok/laser/params_true_back.pt")
-            torch.save(y, "/data/alok/laser/emiss_true_back.pt")
-            torch.save(y_pred, "/data/alok/laser/emiss_pred.pt")
-            torch.save(x_pred, "/data/alok/laser/param_pred.pt")
+            torch.save(x, "/data-new/alok/laser/params_true_back.pt")
+            torch.save(y, "/data-new/alok/laser/emiss_true_back.pt")
+            torch.save(y_pred, "/data-new/alok/laser/emiss_pred.pt")
+            torch.save(x_pred, "/data-new/alok/laser/param_pred.pt")
 
         nngraph.save_integral_emiss_point(
-            y_pred, y, "/data/alok/laser/backwards_test_points.txt", all_points=True
+            y_pred, y, "/data-new/alok/laser/backwards_test_points.txt", all_points=True
         )
         return loss
 

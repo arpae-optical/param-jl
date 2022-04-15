@@ -34,7 +34,7 @@ class ForwardModel(pl.LightningModule):
         self.save_hyperparameters()
         self.config = config
         # self.config["num_wavelens"] = len(
-        #     torch.load(Path("/data/alok/laser/data.pt"))["interpolated_wavelength"][0]
+        #     torch.load(Path("/data-new/alok/laser/data.pt"))["interpolated_wavelength"][0]
         # )
         # self.save_hyperparameters()
         self.model = nn.Sequential(
@@ -68,7 +68,7 @@ class ForwardModel(pl.LightningModule):
         # self.log_image(key="train_forwards_error_graphs", images=["train_step.png"])
         if self.current_epoch == self.config["forward_num_epochs"] - 5:
             nngraph.save_integral_emiss_point(
-                y_pred, y, "/data/alok/laser/forwards_train_points.txt", all_points=True
+                y_pred, y, "/data-new/alok/laser/forwards_train_points.txt", all_points=True
             )
 
         self.log(f"forward/train/loss", loss, prog_bar=True)
@@ -83,7 +83,7 @@ class ForwardModel(pl.LightningModule):
 
         if self.current_epoch > self.config["forward_num_epochs"] - 5:
             nngraph.save_integral_emiss_point(
-                y_pred, y, "/data/alok/laser/forwards_val_points.txt", all_points=True
+                y_pred, y, "/data-new/alok/laser/forwards_val_points.txt", all_points=True
             )
         return loss
 
@@ -93,7 +93,7 @@ class ForwardModel(pl.LightningModule):
         loss = rmse(y_pred, y)
         self.log(f"forward/test/loss", loss, prog_bar=True)
         nngraph.save_integral_emiss_point(
-            y_pred, y, "/data/alok/laser/forwards_val_points.txt", all_points=True
+            y_pred, y, "/data-new/alok/laser/forwards_val_points.txt", all_points=True
         )
         return loss
 

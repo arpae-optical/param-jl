@@ -32,10 +32,10 @@ def get_data(
     if all(
         [
             use_cache,
-            Path("/data/alok/laser/data.pt").exists(),
+            Path("/data-new/alok/laser/data.pt").exists(),
         ]
     ):
-        data = torch.load(Path("/data/alok/laser/data.pt"))
+        data = torch.load(Path("/data-new/alok/laser/data.pt"))
         norm_laser_params, interp_emissivities, uids = (
             data["normalized_laser_params"],
             data["interpolated_emissivity"],
@@ -149,7 +149,7 @@ def get_data(
             "interpolated_wavelength": interp_wavelengths,
             "normalized_laser_params": norm_laser_params,
         },
-        Path("/data/alok/laser/data.pt"),
+        Path("/data-new/alok/laser/data.pt"),
     )
 
     return norm_laser_params, interp_emissivities, uids
@@ -327,5 +327,5 @@ def parse_all() -> None:
         db = client.propopt.laser_samples2
         db.insert(entry)
 
-    for p in Path("/data/alok/laser/minok_ml_data").rglob("*.txt"):
+    for p in Path("/data-new/alok/laser/minok_ml_data").rglob("*.txt"):
         parse_entry(p)
