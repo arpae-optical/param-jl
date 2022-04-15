@@ -21,6 +21,7 @@ import data
 import nngraph
 import wandb
 from forwards import ForwardModel
+from mixer import MLPMixer
 from utils import Config, Stage, rmse, split
 
 
@@ -43,15 +44,17 @@ class BackwardModel(pl.LightningModule):
             self.forward_model.freeze()
 
         self.trunk = nn.Sequential(
-            Rearrange("b c -> b 1 c"),
-            nn.TransformerEncoder(
-                encoder_layer=nn.TransformerEncoderLayer(
-                    d_model=self.config["num_wavelens"],
-                    nhead=25,
-                    activation=F.gelu,
-                    batch_first=True,
-                ),
-                num_layers=12,
+            Rearrange("b c -> b c 1 1"),
+            MLPMixer(
+                in_channels=self.config["num_wavelens"],
+                image_size=1,
+                patch_size=1,
+                num_classes=1_000,
+                dim=512,
+                depth=8,
+                token_dim=256,
+                channel_dim=2048,
+                dropout=0.5,
             ),
             nn.Flatten(),
         )

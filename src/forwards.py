@@ -15,6 +15,7 @@ from torch import einsum, nn
 
 import nngraph
 import wandb
+from mixer import MLPMixer
 from utils import Config, rmse
 
 
@@ -37,15 +38,18 @@ class ForwardModel(pl.LightningModule):
         # )
         # self.save_hyperparameters()
         self.model = nn.Sequential(
-            Rearrange("b c -> b 1 c"),
-            nn.TransformerEncoder(
-                encoder_layer=nn.TransformerEncoderLayer(
-                    d_model=2 + 12, nhead=7, activation=F.gelu, batch_first=True
-                ),
-                num_layers=20,
+            Rearrange("b c -> b c 1 1"),
+            MLPMixer(
+                in_channels=14,
+                image_size=1,
+                patch_size=1,
+                num_classes=self.config["num_wavelens"],
+                dim=512,
+                depth=8,
+                token_dim=256,
+                channel_dim=2048,
+                dropout=0.5,
             ),
-            nn.Flatten(),
-            nn.LazyLinear(self.config["num_wavelens"]),
             nn.Sigmoid(),
         )
 
