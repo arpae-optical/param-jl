@@ -115,9 +115,12 @@ class BackwardModel(pl.LightningModule):
 
             loss = y_loss
 
-        if self.current_epoch == 3994:
+        if self.current_epoch == self.config["backward_num_epochs"] - 5:
             nngraph.save_integral_emiss_point(
-                y_pred, y, "backwards_train_points.txt", all_points=True
+                y_pred,
+                y,
+                "/data/alok/laser/backwards_train_points.txt",
+                all_points=True,
             )
         self.log(f"backward/train/loss", loss, prog_bar=True)
 
@@ -143,9 +146,9 @@ class BackwardModel(pl.LightningModule):
 
             loss = y_loss
 
-        if self.current_epoch > 3994:
+        if self.current_epoch == self.config["backward_num_epochs"] - 5:
             nngraph.save_integral_emiss_point(
-                y_pred, y, "backwards_val_points.txt", all_points=True
+                y_pred, y, "/data/alok/laser/backwards_val_points.txt", all_points=True
             )
         self.log(f"backward/val/loss", loss, prog_bar=True)
 
@@ -176,7 +179,7 @@ class BackwardModel(pl.LightningModule):
             torch.save(x_pred, "/data/alok/laser/param_pred.pt")
 
         nngraph.save_integral_emiss_point(
-            y_pred, y, "backwards_test_points.txt", all_points=True
+            y_pred, y, "/data/alok/laser/backwards_test_points.txt", all_points=True
         )
         return loss
 
