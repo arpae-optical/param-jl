@@ -101,9 +101,8 @@ args = parser.parse_args()
 
 # The `or` idiom allows overriding values from the command line.
 config: Config = {
-    # "forward_lr": tune.loguniform(1e-7, 1e-4),
     "forward_lr": 1e-6,
-    "backward_lr": tune.loguniform(1e-6, 1e-5),
+    "backward_lr": 1e-6,
     "forward_num_epochs": args.forward_num_epochs or tune.choice([1600]),
     "backward_num_epochs": args.backward_num_epochs or tune.choice([2500]),
     "forward_batch_size": args.forward_batch_size or tune.choice([2**9]),
