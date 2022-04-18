@@ -94,6 +94,30 @@ parser.add_argument(
 
 args = parser.parse_args()
 
+# The `or` idiom allows overriding values from the command line.
+config: Config = {
+    # "forward_lr": tune.loguniform(1e-7, 1e-4),
+    "forward_lr": 1e-6,
+    "backward_lr": tune.loguniform(1e-6, 1e-5),
+    "latent_space_size": 1024,
+    "forward_num_epochs": args.forward_num_epochs or tune.choice([1600]),
+    "backward_num_epochs": args.backward_num_epochs or tune.choice([2500]),
+    "forward_batch_size": args.forward_batch_size or tune.choice([2**9]),
+    "backward_batch_size": args.backward_batch_size or tune.choice([2**9]),
+    "use_cache": args.use_cache,
+    "kl_coeff": tune.loguniform(2**-1, 2**0),
+    "kl_variance_coeff": tune.loguniform(2**-12, 2**0),
+    "prediction_iters": args.prediction_iters,
+    "use_forward": args.use_forward,
+    "load_forward_checkpoint": args.load_forward_checkpoint,
+    "load_backward_checkpoint": args.load_backward_checkpoint,
+    "num_wavelens": 1_500,
+}
+
+concrete_config: Config = Config(
+    {k: (v.sample() if hasattr(v, "sample") else v) for k, v in config.items()}
+)
+
 
 def main(config: Config) -> None:
 
@@ -189,6 +213,7 @@ def main(config: Config) -> None:
 
     if not config["load_backward_checkpoint"]:
         backward_trainer.fit(model=backward_model, datamodule=backward_data_module)
+
     backward_trainer.test(
         model=backward_model,
         ckpt_path=str(
@@ -223,28 +248,5 @@ def main(config: Config) -> None:
     # graph(residualsflag = True, predsvstrueflag = True, index_str = params_str, target_str = save_str)
 
 
-# The `or` idiom allows overriding values from the command line.
-config: Config = {
-    # "forward_lr": tune.loguniform(1e-7, 1e-4),
-    "forward_lr": 1e-6,
-    "backward_lr": tune.loguniform(1e-6, 1e-5),
-    "latent_space_size": tune.qlograndint(2**5, 2**10, 1),
-    "forward_num_epochs": args.forward_num_epochs or tune.choice([1600]),
-    "backward_num_epochs": args.backward_num_epochs or tune.choice([2500]),
-    "forward_batch_size": args.forward_batch_size or tune.choice([2**9]),
-    "backward_batch_size": args.backward_batch_size or tune.choice([2**9]),
-    "use_cache": args.use_cache,
-    "kl_coeff": tune.loguniform(2**-1, 2**0),
-    "kl_variance_coeff": tune.loguniform(2**-12, 2**0),
-    "prediction_iters": args.prediction_iters,
-    "use_forward": args.use_forward,
-    "load_forward_checkpoint": args.load_forward_checkpoint,
-    "load_backward_checkpoint": args.load_backward_checkpoint,
-    "num_wavelens": 300,
-}
-
-
-concrete_config: Config = Config(
-    {k: (v.sample() if hasattr(v, "sample") else v) for k, v in config.items()}
-)
-main(concrete_config)
+if __name__ == "__main__":
+    main(concrete_config)

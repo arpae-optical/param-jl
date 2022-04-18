@@ -287,6 +287,38 @@ def graph(residualsflag, predsvstrueflag, target_str, wavelen_num = 800, index_s
                     Laser_E_P_list.append(RMSE_expected_predicted)
                     Emiss_E_P_list.append(RMSE_E_P)
                         
+    
+                        
+
+    x = np.array(Laser_E_P_list)
+    y = np.array(Emiss_E_P_list)
+    x_len = len(x)
+    # gradient, intercept, r_value, p_value, std_err = stats.linregress(x,y)
+    # mn=np.min(x)
+    # mx=np.max(x)
+    # x1=np.linspace(mn,mx,500)
+    # y1=gradient*x1+intercept
+    plt.scatter(
+            x,
+            y,
+            s=[30 for n in range(x_len)],
+            alpha = 1,
+            label="Real vs Predicted Emissivity vs Laser Param Residuals",
+        )
+    # plt.plot(x1,y1,'-r')
+    rounded = str(round(np.mean(y),6))#needed to avoid rounding error
+    print(rounded)
+    plt.title("Laser Params vs Emiss")
+    plt.xlabel(f"Laser Parameters Residuals")
+    plt.ylabel(f"Emissivity Residuals (mean {rounded[0:8]})")
+    # plt.annotate("r-squared = {:.3f}".format(r_value), (0, 1))
+    plt.show()
+    plt.savefig(f'{i}_{index_str}_emiss_laser_residual_graph.png')
+    
+    plt.clf()
+
+        # randomly sample from real validation
+
         if predsvstrueflag == True:
 
             y, stdevs = training_set_mean_vs_stdev()
@@ -364,38 +396,6 @@ def graph(residualsflag, predsvstrueflag, target_str, wavelen_num = 800, index_s
 
                 plt.savefig(f"{index_str}_vs_training_best_{i_run_index}.png", dpi=300)
                 plt.close(fig)
-                        
-
-    x = np.array(Laser_E_P_list)
-    y = np.array(Emiss_E_P_list)
-    x_len = len(x)
-    # gradient, intercept, r_value, p_value, std_err = stats.linregress(x,y)
-    # mn=np.min(x)
-    # mx=np.max(x)
-    # x1=np.linspace(mn,mx,500)
-    # y1=gradient*x1+intercept
-    plt.scatter(
-            x,
-            y,
-            s=[30 for n in range(x_len)],
-            alpha = 1,
-            label="Real vs Predicted Emissivity vs Laser Param Residuals",
-        )
-    # plt.plot(x1,y1,'-r')
-    rounded = str(round(np.mean(y),6))#needed to avoid rounding error
-    print(rounded)
-    plt.title("Laser Params vs Emiss")
-    plt.xlabel(f"Laser Parameters Residuals")
-    plt.ylabel(f"Emissivity Residuals (mean {rounded[0:8]})")
-    # plt.annotate("r-squared = {:.3f}".format(r_value), (0, 1))
-    plt.show()
-    plt.savefig(f'{i}_{index_str}_emiss_laser_residual_graph.png')
-    
-    plt.clf()
-
-        # randomly sample from real validation
-
-    
 
 def save_params(target_str, wavelen_num = 800):
     # importing the data

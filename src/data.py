@@ -268,7 +268,7 @@ class BackwardDataModule(pl.LightningDataModule):
         return DataLoader(
             dataset=self.val,
             batch_size=self.batch_size,
-            shuffle=False,
+            shuffle=True,
             pin_memory=True,
             num_workers=16,
         )
