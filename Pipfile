@@ -20,6 +20,7 @@ pudb = "*"
 ray-lightning = "*"
 ray = {extras = ["tune"], version = "*"}
 einops = "*"
+positional-encodings = "*"
 
 [dev-packages]
 

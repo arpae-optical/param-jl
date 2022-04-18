@@ -31,6 +31,12 @@ parser.add_argument(
     help="Number of epochs for forward model",
 )
 parser.add_argument(
+    "--num-wavelens",
+    type=int,
+    default=300,
+    help="Number of wavelens to interpolate to",
+)
+parser.add_argument(
     "--backward-num-epochs",
     "--be",
     type=int,
@@ -96,22 +102,17 @@ args = parser.parse_args()
 
 # The `or` idiom allows overriding values from the command line.
 config: Config = {
-    # "forward_lr": tune.loguniform(1e-7, 1e-4),
     "forward_lr": 1e-6,
-    "backward_lr": tune.loguniform(1e-6, 1e-5),
-    "latent_space_size": 1024,
+    "backward_lr": 1e-6,
     "forward_num_epochs": args.forward_num_epochs or tune.choice([1600]),
     "backward_num_epochs": args.backward_num_epochs or tune.choice([2500]),
     "forward_batch_size": args.forward_batch_size or tune.choice([2**9]),
     "backward_batch_size": args.backward_batch_size or tune.choice([2**9]),
     "use_cache": args.use_cache,
-    "kl_coeff": tune.loguniform(2**-1, 2**0),
-    "kl_variance_coeff": tune.loguniform(2**-12, 2**0),
-    "prediction_iters": args.prediction_iters,
     "use_forward": args.use_forward,
     "load_forward_checkpoint": args.load_forward_checkpoint,
     "load_backward_checkpoint": args.load_backward_checkpoint,
-    "num_wavelens": 1_500,
+    "num_wavelens": args.num_wavelens,
 }
 
 concrete_config: Config = Config(
@@ -126,20 +127,20 @@ def main(config: Config) -> None:
         logger=[
             WandbLogger(
                 name="Forward laser params",
-                save_dir="/data/alok/laser/wandb_logs/forward",
+                save_dir="/data-new/alok/laser/wandb_logs/forward",
                 offline=False,
                 project="Laser Forward",
                 log_model=True,
             ),
             TensorBoardLogger(
-                save_dir="/data/alok/laser/test_tube_logs/forward",
+                save_dir="/data-new/alok/laser/test_tube_logs/forward",
                 name="Forward",
             ),
         ],
         callbacks=[
             ModelCheckpoint(
                 monitor="forward/val/loss",
-                dirpath="/data/alok/laser/weights/forward",
+                dirpath="/data-new/alok/laser/weights/forward",
                 save_top_k=1,
                 mode="min",
                 save_last=True,
@@ -161,19 +162,19 @@ def main(config: Config) -> None:
         logger=[
             WandbLogger(
                 name="Backward laser params",
-                save_dir="/data/alok/laser/wandb_logs/backward",
+                save_dir="/data-new/alok/laser/wandb_logs/backward",
                 offline=False,
                 project="Laser Backward",
                 log_model=True,
             ),
             TensorBoardLogger(
-                save_dir="/data/alok/laser/test_tube_logs/backward", name="Backward"
+                save_dir="/data-new/alok/laser/test_tube_logs/backward", name="Backward"
             ),
         ],
         callbacks=[
             ModelCheckpoint(
                 monitor="backward/val/loss",
-                dirpath="/data/alok/laser/weights/backward",
+                dirpath="/data-new/alok/laser/weights/backward",
                 save_top_k=1,
                 mode="min",
                 save_last=True,
@@ -201,7 +202,7 @@ def main(config: Config) -> None:
             model=forward_model,
             ckpt_path=str(
                 max(
-                    Path("/data/alok/laser/weights/forward").glob("*.ckpt"),
+                    Path("/data-new/alok/laser/weights/forward").glob("*.ckpt"),
                     key=os.path.getctime,
                 )
             ),
@@ -218,31 +219,28 @@ def main(config: Config) -> None:
         model=backward_model,
         ckpt_path=str(
             max(
-                Path("/data/alok/laser/weights/backward").glob("*.ckpt"),
+                Path("/data-new/alok/laser/weights/backward").glob("*.ckpt"),
                 key=os.path.getctime,
             )
         ),
         datamodule=backward_data_module,
     )
-    pred_iters = config["prediction_iters"]
-    latent = config["latent_space_size"]
-    variance = config["kl_variance_coeff"]
-    params_str = f"pred_iter_{pred_iters}_latent_size_{latent}_k1_variance_{variance}"
-    save_str = f"src/{params_str}"
 
-    for i in range(config["prediction_iters"]):
-        preds: List[Tensor] = backward_trainer.predict(
-            model=backward_model,
-            ckpt_path=str(
-                max(
-                    Path("/data/alok/laser/weights/backward").glob("*.ckpt"),
-                    key=os.path.getctime,
-                )
-            ),
-            datamodule=backward_data_module,
-            return_predictions=True,
-        )
-        torch.save(preds, save_str)
+    preds: dict = backward_trainer.predict(
+        model=backward_model,
+        ckpt_path=str(
+            max(
+                Path("/data-new/alok/laser/weights/backward").glob("*.ckpt"),
+                key=os.path.getctime,
+            )
+        ),
+        datamodule=backward_data_module,
+        return_predictions=True,
+    )
+    torch.save(
+        preds,
+        Path(f"/data-new/alok/laser/preds.pt"),
+    )
     wandb.finish()
 
     # graph(residualsflag = True, predsvstrueflag = True, index_str = params_str, target_str = save_str)
