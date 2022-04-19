@@ -213,46 +213,35 @@ def main(config: Config) -> None:
     train_emiss = torch.load("/data/alok/laser/data.pt")["interpolated_emissivity"]
 
     true_emiss = out["true_emiss"]
-    #original_pred = out["pred_emiss"]
-    original_pred = forward_model(backward_model(true_emiss.detach())).detach()
     pred_array = []
     variant_num = 3
     for i in range(variant_num):
-        new_true = [torch.tensor(emiss+random.uniform(-0.03, 0.03)) for emiss in true_emiss]
+        new_true = [torch.tensor(emiss+random.uniform(-0.05, 0.05)) for emiss in true_emiss]
         new_true = torch.stack(new_true)
         back = backward_model(new_true)
+
         new_pred = forward_model(back)
         pred_array.append(new_pred.detach())
-        print("mse between original pred and noise-added truth")
-        print(mean_squared_error(original_pred, new_true.detach()))
-        print("mse between new prediction and original truth")
-        print(mean_squared_error(true_emiss.detach(), new_pred.detach()))
-
-    for i in range(0, 100, 5):
+    for i in range(0, 100, 55):
 
         pred_emiss = []
         for j in range(variant_num):
             pred_emiss.append(pred_array[j][i])
         pred_emiss = torch.stack(pred_emiss)
-        fig = plot_val(pred_emiss, true_emiss[i], original_pred[i], uids[i])
+        fig = plot_val(pred_emiss, true_emiss[i], uids[i])
         fig.savefig(f"/data/alok/laser/figs/{i}_predicted.png", dpi=300)
-        breakpoint()
         plt.close(fig)
 
 
-        fig2 = plot_val(train_emiss, true_emiss[i], original_pred[i], uids[i])
+        fig2 = plot_val(train_emiss, true_emiss[i], uids[i], stdevs = 0.5)
         fig2.savefig(f"/data/alok/laser/figs/{i}_train_set.png", dpi=300)
         plt.close(fig2)
     
 
 
 
-def plot_val(pred_emiss, true_emiss, original_pred, uid):
+def plot_val(pred_emiss, true_emiss, uid, stdevs = 1):
     wavelen = torch.load("/data/alok/laser/data.pt")["interpolated_wavelength"][0]
-    print("mse between true and pred")
-    print(pred_emiss)
-    print(true_emiss)
-    print(mean_squared_error(true_emiss.detach(), pred_emiss.detach()[1]))
     mean, std = (
         pred_emiss.mean(0),
         pred_emiss.std(0),
@@ -261,13 +250,12 @@ def plot_val(pred_emiss, true_emiss, original_pred, uid):
     
     fig, ax = plt.subplots() 
     ax.plot(wavelen, true_emiss, label = "true")
-    ax.plot(wavelen, mean, label = "pred/train mean")
-    ax.plot(wavelen, original_pred, label = "original pred")
+    ax.plot(wavelen, mean, label = "prediction")
     ax.set_xlabel("wavelen")
     ax.set_ylabel("emiss")
     ax.set_title(str(uid))
     ax.set_ylim(0, 1)
-    plt.fill_between(wavelen, mean - std, mean + std, alpha=0.5)
+    plt.fill_between(wavelen, mean - std*stdevs, mean + std*stdevs, alpha=0.5)
     ax.legend()
     return fig
 
