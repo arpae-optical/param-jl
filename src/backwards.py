@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
 import random
@@ -165,6 +164,7 @@ class BackwardModel(pl.LightningModule):
         if self.forward_model is not None:
             y_pred = self.forward_model(x_pred)
             y_loss = rmse(y_pred, y)
+
             self.log(
                 "backward/test/y/loss",
                 y_loss,
