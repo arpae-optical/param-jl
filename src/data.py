@@ -276,8 +276,9 @@ class BackwardDataModule(pl.LightningDataModule):
 
 
 class StepTestDataModule(pl.LightningDataModule):
-    def __init__(self) -> None:
+    def __init__(self, config: Config) -> None:
         super().__init__()
+        self.config = config
 
     def setup(self, stage: Optional[str]) -> None:
         self.test = TensorDataset(utils.step_tensor())
