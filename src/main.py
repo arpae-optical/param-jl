@@ -214,15 +214,84 @@ def main(config: Config) -> None:
 
     true_emiss = out["true_emiss"]
     pred_array = []
-    variant_num = 3
+    variant_num = 5
+    arbitrary_list = range(0, 100, 5)
+    uid_list = [[] for i in range(variant_num)]
+    watt_list = [[] for i in range(variant_num)]
+    speed_list = [[] for i in range(variant_num)]
+    spacing_list = [[] for i in range(variant_num)]
+    random_emissivities_list = [[] for i in range(variant_num)]
+    param_std_total = 0
     for i in range(variant_num):
-        new_true = [torch.tensor(emiss+random.uniform(-0.05, 0.05)) for emiss in true_emiss]
-        new_true = torch.stack(new_true)
+        #new_true = [torch.tensor(emiss+random.uniform(-0.05, 0.05)) for emiss in true_emiss]
+        rand_list = torch.tensor([[random.uniform(-0.05, 0.05) for emiss in sub_emiss] for sub_emiss in true_emiss])
+        new_true = rand_list+true_emiss
         back = backward_model(new_true)
+        #add spacing
+        space = back.detach()[:, 0]
+        param_std_total += np.std(np.array(space))
+
+        #add speed
+        speed = back.detach()[:, 1]
+        param_std_total += np.std(np.array(speed))
+
+        #add watt
+        watt2 = [(np.where(watt1 == 1)[0]+1)/10 for watt1 in np.array(back[:, 2:].detach())]
+        param_std_total += np.std(np.array(watt2))
+        
+        for j in arbitrary_list:
+            uid_list[i].append(uids[j])
+            watt_list[i].append(watt2[j])
+            speed_list[i].append(speed[j]*690+10)
+            spacing_list[i].append(space[j]*41+1)
+            random_emissivities_list[i].append(new_true[j])
+        #minspeed = 10, maxspeed = 700
+
+        #min 1 max 42
 
         new_pred = forward_model(back)
+        
         pred_array.append(new_pred.detach())
-    for i in range(0, 100, 55):
+    
+
+    print("average std across params:")
+    print(param_std_total/variant_num/3)
+    param_file = open("random_jitters.txt", "a")
+    for rands in random_emissivities_list:
+        for rand_index, rand in enumerate(rands):
+            param_file.write(f"UID {uids[rand_index]}: ")
+            for value in rand:
+                param_file.write("%.5f" % round(float(value), 5)+", ")
+        param_file.write("\n")
+    param_file.close()
+
+    param_file = open("resampled_watt.txt", "a")
+    for watts in watt_list:
+        for watt in watts:
+            param_file.write("%.5f" % round(float(watt), 5)+", ")
+        
+        param_file.write("\n")
+    param_file.close()
+
+    param_file = open("resampled_speed.txt", "a")
+    for speeds in speed_list:
+        for speed in speeds:
+            param_file.write("%.5f" % round(float(speed), 5)+", ")
+        
+        param_file.write("\n")
+    param_file.close()
+
+    param_file = open("resampled_spacing.txt", "a")
+    for spacings in spacing_list:
+        for spacing in spacings:
+            param_file.write("%.5f" % round(float(spacing), 5)+", ")
+        
+        param_file.write("\n")
+    param_file.close()
+
+    print("average std across params:")
+    print(param_std_total/variant_num/3)
+    for i in arbitrary_list:
 
         pred_emiss = []
         for j in range(variant_num):
@@ -250,7 +319,7 @@ def plot_val(pred_emiss, true_emiss, uid, stdevs = 1):
     
     fig, ax = plt.subplots() 
     ax.plot(wavelen, true_emiss, label = "true")
-    ax.plot(wavelen, mean, label = "prediction")
+    ax.plot(wavelen, mean, label = "prediction", linewidth = 0.2)
     ax.set_xlabel("wavelen")
     ax.set_ylabel("emiss")
     ax.set_title(str(uid))
