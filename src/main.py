@@ -23,6 +23,8 @@ from forwards import ForwardModel
 from nngraph import graph
 from utils import Config
 
+import utils
+
 import random
 import numpy as np
 from sklearn.metrics import mean_squared_error
@@ -194,6 +196,7 @@ def main(config: Config) -> None:
 
     forward_data_module = ForwardDataModule(config)
     backward_data_module = BackwardDataModule(config)
+    step_test_datamodule = StepTestDataModule(config)
 
     # TODO: load checkpoint for both forward and back
     forward_model = ForwardModel(config)
@@ -206,24 +209,27 @@ def main(config: Config) -> None:
     out = backward_trainer.predict(
         model=backward_model,
         ckpt_path="/data/alok/laser/weights/backward/last.ckpt",
-        datamodule=backward_data_module,
+        datamodule=step_test_datamodule,
         return_predictions=True,
     )[0]
-    uids = out["uids"]
     train_emiss = torch.load("/data/alok/laser/data.pt")["interpolated_emissivity"]
 
     true_emiss = out["true_emiss"]
     pred_array = []
-    variant_num = 10
-    arbitrary_list = range(0, 100, 5)
-    uid_list = [[] for i in range(variant_num)]
+
+    #Variant num is the number of random curves to generate with jitter
+    variant_num = 1
+    #Arbitrary list is the indices you want to look at in a tensor of emissivity curves. In the FoMM case, 0 = cutoff at 2.5 wl, 800 = cutoff at 12.5 wl. 
+    arbitrary_list = [220]
     watt_list = [[] for i in range(variant_num)]
     speed_list = [[] for i in range(variant_num)]
     spacing_list = [[] for i in range(variant_num)]
     random_emissivities_list = [[] for i in range(variant_num)]
     param_std_total = 0
+    print("start")
     for i in range(variant_num):
         #new_true = [torch.tensor(emiss+random.uniform(-0.05, 0.05)) for emiss in true_emiss]
+        #jitter isn't doing anything XXX
         random_mult = random.uniform(-0.3, 0.3)
         new_true = torch.clamp(torch.tensor([[(random_mult*(1/emiss)*(e_index/3+100)/600)*emiss+emiss for e_index, emiss in enumerate(sub_emiss)] for sub_emiss in true_emiss]),0,1)
         
@@ -231,20 +237,7 @@ def main(config: Config) -> None:
             new_true = true_emiss
         back = backward_model(new_true)
         #add spacing
-        space = back.detach()[:, 0]
-
-        #add speed
-        speed = back.detach()[:, 1]
-        #add watt
-        watt2 = [(np.where(watt1 == 1)[0]+1)/10 for watt1 in np.array(back[:, 2:].detach())]
         
-        for j in arbitrary_list:
-            watt_list[i].append(watt2[j])
-            speed_list[i].append(speed[j]*690+10)
-            spacing_list[i].append(space[j]*41+1)
-            random_emissivities_list[i].append(random_mult)
-
-    
         #minspeed = 10, maxspeed = 700
 
         #min 1 max 42
@@ -253,49 +246,6 @@ def main(config: Config) -> None:
         
         pred_array.append(new_pred.detach())
     
-    for i, j in enumerate(arbitrary_list):
-        param_std_total += np.std((np.array(spacing_list)[:, i]-1)/41)
-
-        param_std_total += np.std((np.array(speed_list)[:, i]-10)/690)
-
-        param_std_total += np.std(np.array(watt_list)[:, i])
-        
-    print(param_std_total)
-    
-
-    print("average std across params:")
-    print(param_std_total/variant_num/3)
-    param_file = open("resampled_random_emissivities.txt", "a")
-    for random_emissivities in random_emissivities_list:
-        for random_emissivitie in random_emissivities:
-            param_file.write("%.5f" % round(float(random_emissivitie), 5)+", ")
-        
-        param_file.write("\n")
-    param_file.close()
-
-    param_file = open("resampled_watt.txt", "a")
-    for watts in watt_list:
-        for watt in watts:
-            param_file.write("%.5f" % round(float(watt), 5)+", ")
-        
-        param_file.write("\n")
-    param_file.close()
-
-    param_file = open("resampled_speed.txt", "a")
-    for speeds in speed_list:
-        for speed in speeds:
-            param_file.write("%.5f" % round(float(speed), 5)+", ")
-        
-        param_file.write("\n")
-    param_file.close()
-
-    param_file = open("resampled_spacing.txt", "a")
-    for spacings in spacing_list:
-        for spacing in spacings:
-            param_file.write("%.5f" % round(float(spacing), 5)+", ")
-        
-        param_file.write("\n")
-    param_file.close()
 
     for i in arbitrary_list:
 
@@ -303,45 +253,60 @@ def main(config: Config) -> None:
         for j in range(variant_num):
             pred_emiss.append(pred_array[j][i])
         pred_emiss = torch.stack(pred_emiss)
-        fig = plot_val(pred_emiss, true_emiss[i], i, True)
+        fig = plot_val(pred_emiss, true_emiss[i], i)
         fig.savefig(f"/data/alok/laser/figs/{i}_predicted.png", dpi=300)
         plt.close(fig)
 
 
-        fig2 = plot_val(train_emiss, true_emiss[i], i, False, stdevs = 1)
-        fig2.savefig(f"/data/alok/laser/figs/{i}_train_set.png", dpi=300)
-        plt.close(fig2)
 
 
-def plot_val(pred_emiss, true_emiss, uid, pred_set_flag, stdevs = 1):
+def plot_val(pred_emiss, true_emiss, index):
     wavelen = torch.load("/data/alok/laser/data.pt")["interpolated_wavelength"][0]
-    mean, std = (
-        pred_emiss.mean(0),
-        pred_emiss.std(0),
-    )
-    label_string = None
-    if pred_set_flag == True:
-        label_string = "Predicted"
-    if pred_set_flag == False:
-        label_string = "Train Set"
+    pred_emiss = pred_emiss[0]
+    extended_max = 2.5
+    extended_min = 0.1
 
-    
+    granularity = 192
+
+    extension = torch.tensor([extended_min+(i)/granularity*(extended_max-extended_min) for i in range(granularity)])
+
+    extended_wave = torch.cat((extension, wavelen))
+
+    #extend the pred emiss
+    old_emiss = pred_emiss
+    breakpoint()
+    first_emiss = np.float(old_emiss[0])
+    new_emiss = torch.cat((torch.tensor([first_emiss for i in range(granularity)]), old_emiss))
+    pred_emiss = new_emiss
+
+    #extend the true emiss
+    old_emiss = true_emiss
+    first_emiss = np.float(old_emiss[0])
+    new_emiss = torch.cat((torch.tensor([first_emiss for i in range(granularity)]), old_emiss))
+    true_emiss = new_emiss
+
+    wavelen = extended_wave
+
     fig, ax = plt.subplots() 
-    ax.plot(wavelen, true_emiss, label = "True emissivity")
-    ax.plot(wavelen, mean, label = f"{label_string} emissivity, {stdevs} stdev above and below", linewidth = 1)
-    ax.set_xlabel("Wavelength")
-    ax.set_ylabel("Emissivity")
-    ax.set_title(f"Mean {label_string} Emissivity, UID {uid}", fontsize = 12)
-    ax.set_ylim(0, 1)
-    plt.fill_between(wavelen, mean - std*stdevs, mean + std*stdevs, alpha=0.5)
+    temp = 1400 
+    plot_index = 0
+    planck = [float(utils.planck_norm(wavelength, temp)) for wavelength in wavelen]
+
+    planck_max = max(planck)
+    planck = [wave/planck_max for wave in planck]
+
+    new_score = 0
+    
+    wavelen_cutoff = float(wavelen[index+granularity])
+    #format the predicted params
+    FoMM = utils.planck_emiss_prod(wavelen, pred_emiss, wavelen_cutoff, 1400)
+    
+    step = true_emiss
+    ax.plot(wavelen, pred_emiss, c= 'blue', alpha = 0.2, linewidth = 1.0, label = f'Predicted Emissivity, FoMM = {FoMM}')
+    ax.plot(wavelen, step, c= 'black', label = f'Ideal target emissivity', linewidth = 2.0)
     ax.legend()
     return fig
 
 
 if __name__ == "__main__":
     main(concrete_config)
-        
-    
-    
-    
-
