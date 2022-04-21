@@ -23,8 +23,6 @@ from forwards import ForwardModel
 from nngraph import graph
 from utils import Config
 
-import utils
-
 import random
 import numpy as np
 from sklearn.metrics import mean_squared_error
@@ -196,7 +194,6 @@ def main(config: Config) -> None:
 
     forward_data_module = ForwardDataModule(config)
     backward_data_module = BackwardDataModule(config)
-    step_test_datamodule = StepTestDataModule(config)
 
     # TODO: load checkpoint for both forward and back
     forward_model = ForwardModel(config)
@@ -209,15 +206,17 @@ def main(config: Config) -> None:
     out = backward_trainer.predict(
         model=backward_model,
         ckpt_path="/data/alok/laser/weights/backward/last.ckpt",
-        datamodule=step_test_datamodule,
+        datamodule=backward_data_module,
         return_predictions=True,
     )[0]
+    uids = out["uids"]
     train_emiss = torch.load("/data/alok/laser/data.pt")["interpolated_emissivity"]
 
     true_emiss = out["true_emiss"]
     pred_array = []
-    variant_num = 50
-    arbitrary_list = [220]
+    variant_num = 10
+    arbitrary_list = range(0, 100, 5)
+    uid_list = [[] for i in range(variant_num)]
     watt_list = [[] for i in range(variant_num)]
     speed_list = [[] for i in range(variant_num)]
     spacing_list = [[] for i in range(variant_num)]
@@ -225,8 +224,8 @@ def main(config: Config) -> None:
     param_std_total = 0
     for i in range(variant_num):
         #new_true = [torch.tensor(emiss+random.uniform(-0.05, 0.05)) for emiss in true_emiss]
-        random_mult = random.uniform(0.7,1)
-        new_true = torch.clamp(torch.tensor([[random_mult*emiss for emiss in sub_emiss] for sub_emiss in true_emiss]),0,1)
+        random_mult = random.uniform(-0.3, 0.3)
+        new_true = torch.clamp(torch.tensor([[(random_mult*(1/emiss)*(e_index/3+100)/600)*emiss+emiss for e_index, emiss in enumerate(sub_emiss)] for sub_emiss in true_emiss]),0,1)
         
         if i == 0:
             new_true = true_emiss
@@ -260,9 +259,10 @@ def main(config: Config) -> None:
         param_std_total += np.std((np.array(speed_list)[:, i]-10)/690)
 
         param_std_total += np.std(np.array(watt_list)[:, i])
+        
     print(param_std_total)
     
-    
+
     print("average std across params:")
     print(param_std_total/variant_num/3)
     param_file = open("resampled_random_emissivities.txt", "a")
@@ -303,42 +303,36 @@ def main(config: Config) -> None:
         for j in range(variant_num):
             pred_emiss.append(pred_array[j][i])
         pred_emiss = torch.stack(pred_emiss)
-        fig = plot_val(pred_emiss, true_emiss[i], i)
+        fig = plot_val(pred_emiss, true_emiss[i], i, True)
         fig.savefig(f"/data/alok/laser/figs/{i}_predicted.png", dpi=300)
         plt.close(fig)
 
 
-        fig2 = plot_val(train_emiss, true_emiss[i], i, stdevs = 0.5)
+        fig2 = plot_val(train_emiss, true_emiss[i], i, False, stdevs = 1)
         fig2.savefig(f"/data/alok/laser/figs/{i}_train_set.png", dpi=300)
         plt.close(fig2)
-    
 
 
-
-def plot_val(pred_emiss, true_emiss, index, stdevs = 1):
+def plot_val(pred_emiss, true_emiss, uid, pred_set_flag, stdevs = 1):
     wavelen = torch.load("/data/alok/laser/data.pt")["interpolated_wavelength"][0]
     mean, std = (
         pred_emiss.mean(0),
         pred_emiss.std(0),
     )
+    label_string = None
+    if pred_set_flag == True:
+        label_string = "Predicted"
+    if pred_set_flag == False:
+        label_string = "Train Set"
+
     
     fig, ax = plt.subplots() 
-    temp = 1400 
-    plot_index = 0
-    planck = [float(utils.planck_norm(wavelength, temp)) for wavelength in wavelen]
-
-    planck_max = max(planck)
-    planck = [wave/planck_max for wave in planck]
-
-    new_score = 0
-    
-    wavelen_cutoff = float(wavelen[index])
-    #format the predicted params
-    FoMM = utils.planck_emiss_prod(wavelen, mean, wavelen_cutoff, 1400)
-    
-    step = true_emiss
-    ax.plot(wavelen[0:800], mean[0:800], c= 'blue', alpha = 0.2, linewidth = 1.0, label = f'Predicted Emissivity, FoMM = {FoMM}')
-    ax.plot(wavelen[0:800], step, c= 'black', label = f'Ideal target emissivity', linewidth = 2.0)
+    ax.plot(wavelen, true_emiss, label = "True emissivity")
+    ax.plot(wavelen, mean, label = f"{label_string} emissivity, {stdevs} stdev above and below", linewidth = 1)
+    ax.set_xlabel("Wavelength")
+    ax.set_ylabel("Emissivity")
+    ax.set_title(f"Mean {label_string} Emissivity, UID {uid}", fontsize = 12)
+    ax.set_ylim(0, 1)
     plt.fill_between(wavelen, mean - std*stdevs, mean + std*stdevs, alpha=0.5)
     ax.legend()
     return fig
@@ -346,3 +340,8 @@ def plot_val(pred_emiss, true_emiss, index, stdevs = 1):
 
 if __name__ == "__main__":
     main(concrete_config)
+        
+    
+    
+    
+
