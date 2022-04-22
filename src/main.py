@@ -192,17 +192,12 @@ def main(config: Config) -> None:
         log_every_n_steps=min(3, config["backward_num_epochs"] - 1),
     )
 
-    forward_data_module = ForwardDataModule(config)
-    backward_data_module = BackwardDataModule(config)
     step_test_datamodule = StepTestDataModule(config)
 
     # TODO: load checkpoint for both forward and back
     forward_model = ForwardModel(config)
     backward_model = BackwardModel(config=config, forward_model=forward_model)
 
-    pred_iters = config["prediction_iters"]
-    latent = config["latent_space_size"]
-    variance = config["kl_variance_coeff"]
 
     out = backward_trainer.predict(
         model=backward_model,
@@ -210,7 +205,6 @@ def main(config: Config) -> None:
         datamodule=step_test_datamodule,
         return_predictions=True,
     )[0]
-    train_emiss = torch.load("/data/alok/laser/data.pt")["interpolated_emissivity"]
 
     true_emiss = out["true_emiss"]
     pred_array = []
@@ -219,12 +213,6 @@ def main(config: Config) -> None:
     variant_num = 1
     # Arbitrary list is the indices you want to look at in a tensor of emissivity curves. In the FoMM case, 0 = cutoff at 2.5 wl, 800 = cutoff at 12.5 wl.
     arbitrary_list = [220]
-    watt_list = [[] for i in range(variant_num)]
-    speed_list = [[] for i in range(variant_num)]
-    spacing_list = [[] for i in range(variant_num)]
-    random_emissivities_list = [[] for i in range(variant_num)]
-    param_std_total = 0
-    print("start")
     for i in range(variant_num):
         # new_true = [torch.tensor(emiss+random.uniform(-0.05, 0.05)) for emiss in true_emiss]
         # jitter isn't doing anything XXX
@@ -290,7 +278,7 @@ def plot_val(pred_emiss, true_emiss, index):
     breakpoint()
     first_emiss = np.float(old_emiss[0])
     new_emiss = torch.cat(
-        (torch.tensor([first_emiss for i in range(granularity)]), old_emiss)
+        (torch.tensor([first_emiss for _ in range(granularity)]), old_emiss)
     )
     pred_emiss = new_emiss
 
@@ -298,7 +286,7 @@ def plot_val(pred_emiss, true_emiss, index):
     old_emiss = true_emiss
     first_emiss = np.float(old_emiss[0])
     new_emiss = torch.cat(
-        (torch.tensor([first_emiss for i in range(granularity)]), old_emiss)
+        (torch.tensor([first_emiss for _ in range(granularity)]), old_emiss)
     )
     true_emiss = new_emiss
 
@@ -306,13 +294,11 @@ def plot_val(pred_emiss, true_emiss, index):
 
     fig, ax = plt.subplots()
     temp = 1400
-    plot_index = 0
     planck = [float(utils.planck_norm(wavelength, temp)) for wavelength in wavelen]
 
     planck_max = max(planck)
     planck = [wave / planck_max for wave in planck]
 
-    new_score = 0
 
     wavelen_cutoff = float(wavelen[index + granularity])
     # format the predicted params
