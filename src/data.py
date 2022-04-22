@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -15,6 +16,7 @@ import sklearn
 import torch
 import torch.nn.functional as F
 from scipy.interpolate import interp1d
+from torch import FloatTensor, LongTensor, Tensor
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 from tqdm.contrib import tenumerate
@@ -22,12 +24,12 @@ from tqdm.contrib import tenumerate
 import utils
 from utils import Config, Stage, rmse, split
 
-LaserParams, Emiss = torch.FloatTensor, torch.FloatTensor
+LaserParams, Emiss = FloatTensor, FloatTensor
 
 
 def get_data(
     use_cache: bool = True, num_wavelens: int = 300
-) -> Tuple[LaserParams, Emiss, torch.LongTensor]:
+) -> Tuple[LaserParams, Emiss, LongTensor]:
     """Data is sorted in ascending order of wavelength."""
     if all(
         [
@@ -122,12 +124,12 @@ def get_data(
         interp_wavelengths.append(interp_wavelen)
 
     # normalize laser parameters
-    laser_params = torch.FloatTensor(laser_params)
-    emissivity = torch.FloatTensor(emissivity)
-    wavelength = torch.FloatTensor(wavelength)
-    interp_emissivities = torch.FloatTensor(interp_emissivities)
-    interp_wavelengths = torch.FloatTensor(interp_wavelengths)
-    uids = torch.LongTensor(uids)
+    laser_params = FloatTensor(laser_params)
+    emissivity = FloatTensor(emissivity)
+    wavelength = FloatTensor(wavelength)
+    interp_emissivities = FloatTensor(interp_emissivities)
+    interp_wavelengths = FloatTensor(interp_wavelengths)
+    uids = LongTensor(uids)
 
     print(f"{len(laser_params)=}")
     print(f"{len(emissivity)=}")
@@ -294,23 +296,36 @@ class StepTestDataModule(pl.LightningDataModule):
         )
 
 
-def parse_all() -> None:
+class TPVData(TypedDict):
+    emiss: Tensor
+    wavelen: Tensor
+    power: float
+    speed: float
+    spacing: float
+
+
+def parse_all() -> List[TPVData]:
     """For converting Minok's raw data."""
 
-    def parse_entry(filename: Path) -> None:
-        pattern = re.compile(r"Power_(\d)_(\d)_W_Speed_(\d+)_mm_s_Spacing_(\d+)_um.txt")
+    def parse_entry(filename: Path) -> TPVData:
+        pattern = re.compile(
+            r"Power_(\d)_(\d)_W_Speed_(.+)_mm_s_Spacing_(.+)_um\s*(\d+)\s*\.txt"
+        )
         m = pattern.match(filename.name)
         if m is None:
-            return
-        power1, power2, x_speed, y_spacing = m[1], m[2], m[3], m[4]
-        x_speed = float(x_speed)
-        y_spacing = float(y_spacing)
-        power = int(power1) + int(power2) * 10**-1
+            raise ValueError(f"Could not parse filename {filename}")
+        power, x_speed, y_spacing, rand_id = (
+            int(m[1]) + int(m[2]) * 10**-1,
+            float(m[3]),
+            float(m[4]),
+            int(m[5]),
+        )
         raw_data = pd.read_csv(
             filename, header=None, names=["wavelens", "emisses"], delim_whitespace=True
         )
-        wavelens = raw_data.wavelens
-        emisses = raw_data.emisses
+        # reverse order to match other data
+        wavelens = raw_data.wavelens[::-1]
+        emisses = raw_data.emisses[::-1]
         # emissivity_averaged_over_wavelength = ...
         entry = {
             "laser_repetition_rate_kHz": 100,
@@ -328,12 +343,30 @@ def parse_all() -> None:
                 for w, e in zip(wavelens, emisses)
             ],
             "emissivity_averaged_over_frequency": sum(emisses) / len(emisses),
+            "rand_id": rand_id,
         }
-        client = pymongo.MongoClient(
-            "mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt"
-        )
-        db = client.propopt.laser_samples2
-        db.insert(entry)
+        return {
+            "emiss": torch.as_tensor(emisses),
+            "wavelen": torch.as_tensor(wavelens),
+            "power": power,
+            "speed": x_speed,
+            "spacing": y_spacing,
+        }
+        # client = pymongo.MongoClient(
+        #     "mongodb://propopt_admin:ww11122wfg64b1aaa@mongodb07.nersc.gov/propopt"
+        # )
+        # db = client.propopt.laser_samples3
+        # db.insert(entry)
 
-    for p in Path("/data-new/alok/laser/minok_ml_data").rglob("*.txt"):
+    out = [
         parse_entry(p)
+        for p in Path(
+            "/data-new/alok/laser/minok_ml_data2/Validation_2nd/Full_New_TPV"
+        ).rglob("*.txt")
+    ]
+    torch.save(out, Path("/data-new/alok/laser/minok_tpv_data.pt"))
+    return out
+
+
+if __name__ == "__main__":
+    parse_all()
