@@ -125,144 +125,39 @@ concrete_config: Config = Config(
 
 def main(config: Config) -> None:
 
-    forward_trainer = pl.Trainer(
-        max_epochs=config["forward_num_epochs"],
-        logger=[
-            WandbLogger(
-                name="Forward laser params",
-                save_dir="/data/alok/laser/wandb_logs/forward",
-                offline=False,
-                project="Laser Forward",
-                log_model=True,
-            ),
-            TensorBoardLogger(
-                save_dir="/data/alok/laser/test_tube_logs/forward",
-                name="Forward",
-            ),
-        ],
-        callbacks=[
-            ModelCheckpoint(
-                monitor="forward/val/loss",
-                dirpath="/data/alok/laser/weights/forward",
-                save_top_k=1,
-                mode="min",
-                save_last=True,
-            ),
-            pl.callbacks.progress.TQDMProgressBar(refresh_rate=2),
-        ],
-        gpus=1,
-        precision=32,
-        # overfit_batches=1,
-        # track_grad_norm=2,
-        weights_summary="full",
-        check_val_every_n_epoch=min(3, config["forward_num_epochs"] - 1),
-        gradient_clip_val=0.5,
-        log_every_n_steps=min(3, config["forward_num_epochs"] - 1),
-    )
-
-    backward_trainer = pl.Trainer(
-        max_epochs=config["backward_num_epochs"],
-        logger=[
-            WandbLogger(
-                name="Backward laser params",
-                save_dir="/data/alok/laser/wandb_logs/backward",
-                offline=False,
-                project="Laser Backward",
-                log_model=True,
-            ),
-            TensorBoardLogger(
-                save_dir="/data/alok/laser/test_tube_logs/backward", name="Backward"
-            ),
-        ],
-        callbacks=[
-            ModelCheckpoint(
-                monitor="backward/val/loss",
-                dirpath="/data/alok/laser/weights/backward",
-                save_top_k=1,
-                mode="min",
-                save_last=True,
-            ),
-            pl.callbacks.progress.TQDMProgressBar(refresh_rate=10),
-        ],
-        gpus=1,
-        precision=32,
-        weights_summary="full",
-        check_val_every_n_epoch=min(3, config["backward_num_epochs"] - 1),
-        gradient_clip_val=0.5,
-        log_every_n_steps=min(3, config["backward_num_epochs"] - 1),
-    )
-
-    step_test_datamodule = StepTestDataModule(config)
-
     # TODO: load checkpoint for both forward and back
-    forward_model = ForwardModel(config)
-    backward_model = BackwardModel(config=config, forward_model=forward_model)
 
+    true_emiss = torch.cat(
+        [
+            torch.tensor([1.0 for _ in range(178)]),
+            torch.tensor([0.0 for _ in range(800 - 178)]),
+        ]
+    )
 
-    out = backward_trainer.predict(
-        model=backward_model,
-        ckpt_path="/data/alok/laser/weights/backward/last.ckpt",
-        datamodule=step_test_datamodule,
-        return_predictions=True,
-    )[0]
+    # true_emiss = utils.step_tensor()[
+    # torch.tensor([1. for _ in range )
+    tpv: list[dict] = torch.load(Path("/data-new/alok/laser/minok_tpv_data.pt"))
 
-    true_emiss = out["true_emiss"]
-    pred_array = []
+    # TODO do for all tpv curves, not just one
 
-    # Variant num is the number of random curves to generate with jitter
-    variant_num = 1
-    # Arbitrary list is the indices you want to look at in a tensor of emissivity curves. In the FoMM case, 0 = cutoff at 2.5 wl, 800 = cutoff at 12.5 wl.
-    arbitrary_list = [220]
-    for i in range(variant_num):
-        # new_true = [torch.tensor(emiss+random.uniform(-0.05, 0.05)) for emiss in true_emiss]
-        # jitter isn't doing anything XXX
-        random_mult = random.uniform(-0.3, 0.3)
-        new_true = torch.clamp(
-            torch.tensor(
-                [
-                    [
-                        (random_mult * (1 / emiss) * (e_index / 3 + 100) / 600) * emiss
-                        + emiss
-                        for e_index, emiss in enumerate(sub_emiss)
-                    ]
-                    for sub_emiss in true_emiss
-                ]
-            ),
-            0,
-            1,
-        )
+    cutoff_index = 500
+    for i, tpv_curve in enumerate(tpv):
+        pred_emiss = tpv_curve["interp_emiss"]
 
-        if i == 0:
-            new_true = true_emiss
-        back = backward_model(new_true)
-        # add spacing
-
-        # minspeed = 10, maxspeed = 700
-
-        # min 1 max 42
-
-        new_pred = forward_model(back)
-
-        pred_array.append(new_pred.detach())
-
-    for i in arbitrary_list:
-
-        pred_emiss = []
-        for j in range(variant_num):
-            pred_emiss.append(pred_array[j][i])
-        pred_emiss = torch.stack(pred_emiss)
-        fig = plot_val(pred_emiss, true_emiss[i], i)
-        fig.savefig(f"/data/alok/laser/figs/{i}_predicted.png", dpi=300)
+        fig = plot_val(pred_emiss[:cutoff_index], true_emiss[:cutoff_index], index=178)
+        fig.savefig(f"/data-new/alok/laser/figs/{i}_predicted.png", dpi=300)
         plt.close(fig)
 
 
-def plot_val(pred_emiss, true_emiss, index):
-    wavelen = torch.load("/data/alok/laser/data.pt")["interpolated_wavelength"][0]
-    pred_emiss = pred_emiss[0]
-    extended_max = 2.5
-    extended_min = 0.1
+def extend_left(tensor: Tensor, num_to_extend: int) -> Tensor:
+    return torch.cat([torch.full((num_to_extend,), tensor[0]), tensor])
 
-    granularity = 192
+
+def plot_val(pred_emiss, true_emiss, index):
+    wavelen = torch.load("/data-new/alok/laser/data.pt")["interpolated_wavelength"][0][:500]
+
+    extended_min, extended_max = 0.1, 2.5
+    granularity = 500
 
     extension = torch.tensor(
         [
@@ -271,26 +166,9 @@ def plot_val(pred_emiss, true_emiss, index):
         ]
     )
 
-    extended_wave = torch.cat((extension, wavelen))
-
-    # extend the pred emiss
-    old_emiss = pred_emiss
-    breakpoint()
-    first_emiss = np.float(old_emiss[0])
-    new_emiss = torch.cat(
-        (torch.tensor([first_emiss for _ in range(granularity)]), old_emiss)
-    )
-    pred_emiss = new_emiss
-
-    # extend the true emiss
-    old_emiss = true_emiss
-    first_emiss = np.float(old_emiss[0])
-    new_emiss = torch.cat(
-        (torch.tensor([first_emiss for _ in range(granularity)]), old_emiss)
-    )
-    true_emiss = new_emiss
-
-    wavelen = extended_wave
+    wavelen = torch.cat((extension, wavelen))
+    pred_emiss = extend_left(pred_emiss, granularity)
+    true_emiss = extend_left(true_emiss, granularity)
 
     fig, ax = plt.subplots()
     temp = 1400
@@ -298,7 +176,6 @@ def plot_val(pred_emiss, true_emiss, index):
 
     planck_max = max(planck)
     planck = [wave / planck_max for wave in planck]
-
 
     wavelen_cutoff = float(wavelen[index + granularity])
     # format the predicted params
