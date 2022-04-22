@@ -297,14 +297,16 @@ class StepTestDataModule(pl.LightningDataModule):
 
 
 class TPVData(TypedDict):
-    emiss: Tensor
-    wavelen: Tensor
+    raw_emiss: Tensor
+    raw_wavelen: Tensor
+    interp_emiss: Tensor
+    interp_wavelen: Tensor
     power: float
     speed: float
     spacing: float
 
 
-def parse_all() -> List[TPVData]:
+def parse_all() -> None:
     """For converting Minok's raw data."""
 
     def parse_entry(filename: Path) -> TPVData:
@@ -324,30 +326,23 @@ def parse_all() -> List[TPVData]:
             filename, header=None, names=["wavelens", "emisses"], delim_whitespace=True
         )
         # reverse order to match other data
-        wavelens = raw_data.wavelens[::-1]
+        all_wavelens = raw_data.wavelens[::-1]
         emisses = raw_data.emisses[::-1]
-        # emissivity_averaged_over_wavelength = ...
-        entry = {
-            "laser_repetition_rate_kHz": 100,
-            "laser_wavelength_nm": 1030,
-            "laser_polarization": "p-pol",
-            "laser_steering_equipment": "Galvano scanner",
-            "laser_hardware_model": "s-Pulse (Amplitude)",
-            "substrate_details": "SS foil with 0.5 mm thickness (GF90624180-20EA)",
-            "laser_power_W": power,
-            "laser_scanning_speed_x_dir_mm_per_s": x_speed,
-            "laser_scanning_line_spacing_y_dir_micron": y_spacing,
-            "substrate_material": "stainless_steel",
-            "emissivity_spectrum": [
-                {"wavelength_micron": w, "normal_emissivity": e}
-                for w, e in zip(wavelens, emisses)
-            ],
-            "emissivity_averaged_over_frequency": sum(emisses) / len(emisses),
-            "rand_id": rand_id,
-        }
+        # clip to same as rest of data
+        wavelens = all_wavelens.loc[all_wavelens < 12].values
+        emisses = emisses.loc[all_wavelens < 12].values
+
+
+        interp_wavelen = np.linspace(
+            min(wavelens), max(wavelens), num=800
+        )
+        interp_emiss = interp1d(wavelens, emisses)(interp_wavelen)
+
         return {
-            "emiss": torch.as_tensor(emisses),
-            "wavelen": torch.as_tensor(wavelens),
+            "raw_emiss": torch.as_tensor(emisses),
+            "interp_emiss": torch.as_tensor(interp_emiss),
+            "interp_wavelen": torch.as_tensor(interp_wavelen),
+            "raw_wavelen": torch.as_tensor(wavelens),
             "power": power,
             "speed": x_speed,
             "spacing": y_spacing,
@@ -358,14 +353,20 @@ def parse_all() -> List[TPVData]:
         # db = client.propopt.laser_samples3
         # db.insert(entry)
 
-    out = [
+    out_tpv = [
         parse_entry(p)
         for p in Path(
             "/data-new/alok/laser/minok_ml_data2/Validation_2nd/Full_New_TPV"
         ).rglob("*.txt")
     ]
-    torch.save(out, Path("/data-new/alok/laser/minok_tpv_data.pt"))
-    return out
+    out_preds = [
+        parse_entry(p)
+        for p in Path(
+            "/data-new/alok/laser/minok_ml_data2/Validation_2nd/Direct_Predictions"
+        ).rglob("*.txt")
+    ]
+    torch.save(out_tpv, Path("/data-new/alok/laser/minok_tpv_data.pt"))
+    torch.save(out_preds, Path("/data-new/alok/laser/minok_laser_preds.pt"))
 
 
 if __name__ == "__main__":
