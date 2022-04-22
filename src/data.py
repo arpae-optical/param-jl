@@ -325,17 +325,17 @@ def parse_all() -> None:
         raw_data = pd.read_csv(
             filename, header=None, names=["wavelens", "emisses"], delim_whitespace=True
         )
-        # reverse order to match other data
-        all_wavelens = raw_data.wavelens[::-1]
-        emisses = raw_data.emisses[::-1]
+        # Reverse order to match other data. The `.copy()` is to avoid a "negative stride" conversion error.
+        all_wavelens = raw_data.wavelens[::-1].copy()
+        emisses = raw_data.emisses[::-1].copy()
         # clip to same as rest of data
-        wavelens = all_wavelens.loc[all_wavelens < 12].values
-        emisses = emisses.loc[all_wavelens < 12].values
+        MAX_WAVELEN = 12
+        wavelens = all_wavelens.loc[all_wavelens < MAX_WAVELEN].values
+        emisses = emisses.loc[all_wavelens < MAX_WAVELEN].values
+        # wavelens = all_wavelens.values
+        # emisses = emisses.values
 
-
-        interp_wavelen = np.linspace(
-            min(wavelens), max(wavelens), num=800
-        )
+        interp_wavelen = np.linspace(min(wavelens), max(wavelens), num=10_000)
         interp_emiss = interp1d(wavelens, emisses)(interp_wavelen)
 
         return {

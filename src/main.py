@@ -16,6 +16,7 @@ from einops import rearrange, reduce, repeat
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from ray import tune
+from scipy.interpolate import interp1d
 from sklearn.metrics import mean_squared_error
 from torch import Tensor
 
@@ -123,52 +124,71 @@ concrete_config: Config = Config(
 )
 
 
+GRANUALITY, CUTOFF_INDEX = 100, 4762
+# GRANUALITY, CUTOFF_INDEX = 100, 4631
+# GRANUALITY, CUTOFF_INDEX = 100, 4642
+
+
+def nearest_idx(a, a0):
+    """Element in nd array `a` closest to the scalar value `a0`"""
+    return (a - a0).abs().argmin()
+
+
+def interpolate_smoothly(wavelen, emiss):
+    interp_wavelen = np.linspace(min(wavelen.numpy()), max(wavelen.numpy()), num=10_000)
+    interp_emiss = interp1d(wavelen().numpy(), emiss.numpy())(interp_wavelen)
+    return interp_wavelen, interp_emiss
+
+
 def main(config: Config) -> None:
 
     # TODO: load checkpoint for both forward and back
-
-    true_emiss = torch.cat(
-        [
-            torch.tensor([1.0 for _ in range(178)]),
-            torch.tensor([0.0 for _ in range(800 - 178)]),
-        ]
-    )
 
     # true_emiss = utils.step_tensor()[
     # torch.tensor([1. for _ in range )
     tpv: list[dict] = torch.load(Path("/data-new/alok/laser/minok_tpv_data.pt"))
 
-    # TODO do for all tpv curves, not just one
-
-    cutoff_index = 500
+    CUTOFF_INDEX = nearest_idx(tpv[0]["interp_wavelen"], 6.1)
     for i, tpv_curve in enumerate(tpv):
         pred_emiss = tpv_curve["interp_emiss"]
-
-        fig = plot_val(pred_emiss[:cutoff_index], true_emiss[:cutoff_index], index=178)
-        fig.savefig(f"/data-new/alok/laser/figs/{i}_predicted.png", dpi=300)
+        true_emiss = torch.cat(
+            [
+                torch.full([CUTOFF_INDEX], 1.0),
+                torch.full([len(pred_emiss) - CUTOFF_INDEX], 0.0),
+            ]
+        )
+        # breakpoint()
+        fig = plot_val(pred_emiss, true_emiss, index=CUTOFF_INDEX)
+        fig.savefig(f"/data-new/alok/laser/figs/{i}_predicted.png")
         plt.close(fig)
 
 
-def extend_left(tensor: Tensor, num_to_extend: int) -> Tensor:
-    return torch.cat([torch.full((num_to_extend,), tensor[0]), tensor])
+def extend_left(tensor: Tensor, num_to_extend: int, interpolate: bool) -> Tensor:
+    """interpolate: whether to do linear interpolation"""
+    first_elem = tensor[0]
+    if interpolate:
+        left = torch.linspace(0.95, first_elem, num_to_extend)
+    else:
+        left = torch.full((num_to_extend,), first_elem)
+    return torch.cat([left, tensor])
 
 
 def plot_val(pred_emiss, true_emiss, index):
-    wavelen = torch.load("/data-new/alok/laser/data.pt")["interpolated_wavelength"][0][:500]
+    # wavelen = torch.load("/data-new/alok/laser/data.pt")["interpolated_wavelength"][0]
+    wavelen = torch.load("/data-new/alok/laser/minok_tpv_data.pt")[0]["interp_wavelen"]
 
-    extended_min, extended_max = 0.1, 2.5
-    granularity = 500
+    extended_min, extended_max = 0.01, 0.8333
 
     extension = torch.tensor(
         [
-            extended_min + (i) / granularity * (extended_max - extended_min)
-            for i in range(granularity)
+            extended_min + (i) / GRANUALITY * (extended_max - extended_min)
+            for i in range(GRANUALITY)
         ]
     )
 
     wavelen = torch.cat((extension, wavelen))
-    pred_emiss = extend_left(pred_emiss, granularity)
-    true_emiss = extend_left(true_emiss, granularity)
+    pred_emiss = extend_left(pred_emiss, GRANUALITY, interpolate=False)
+    true_emiss = extend_left(true_emiss, GRANUALITY, interpolate=False)
 
     fig, ax = plt.subplots()
     temp = 1400
@@ -177,9 +197,9 @@ def plot_val(pred_emiss, true_emiss, index):
     planck_max = max(planck)
     planck = [wave / planck_max for wave in planck]
 
-    wavelen_cutoff = float(wavelen[index + granularity])
+    wavelen_cutoff = float(wavelen[index + GRANUALITY])
     # format the predicted params
-    FoMM = utils.planck_emiss_prod(wavelen, pred_emiss, wavelen_cutoff, 1400)
+    FoMM = utils.planck_emiss_prod(wavelen, pred_emiss, wavelen_cutoff, temp)
 
     step = true_emiss
     ax.plot(
@@ -191,6 +211,9 @@ def plot_val(pred_emiss, true_emiss, index):
         label=f"Predicted Emissivity, FoMM = {FoMM}",
     )
     ax.plot(wavelen, step, c="black", label=f"Ideal target emissivity", linewidth=2.0)
+    ax.set_xlabel("Wavelength (microns)")
+    ax.set_ylabel("Emissivity")
+    ax.set_title(f"Measured emissivity vs. Ideal")
     ax.legend()
     return fig
 
