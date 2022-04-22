@@ -58,56 +58,55 @@ class Config(TypedDict):
     backward_batch_size: int
     use_cache: bool
     num_wavelens: int
-    use_forward:bool
-    load_forward_checkpoint:bool
-    load_backward_checkpoint:bool
+    use_forward: bool
+    load_forward_checkpoint: bool
+    load_backward_checkpoint: bool
+
 
 def planck_norm(wavelen, temp):
     e = 2.7182818
-    c1 = 1.191042*10**8
-    denom1 = e**(1.4387752*10**4/wavelen/temp)-1
-    denom2 = wavelen**5*(denom1)
-    emiss = c1/denom2 
-    return(emiss)
+    c1 = 1.191042 * 10**8
+    denom1 = e ** (1.4387752 * 10**4 / wavelen / temp) - 1
+    denom2 = wavelen**5 * (denom1)
+    emiss = c1 / denom2
+    return emiss
+
 
 def planck_emiss_prod(wave_x, emiss_y, wavelen, temp):
     """
     wave_x: x values, wavelength in um
-    
+
     emiss_y: y values, emissivity
-    
+
     wavelen: target wavelength for cutoff"""
 
     total_before = 0
     total_after = 0
 
-    for i in range(len(wave_x)-1):
+    for i in range(len(wave_x) - 1):
         if wave_x[i] < wavelen:
-            width = abs(wave_x[i+1]-wave_x[i])
+            width = abs(wave_x[i + 1] - wave_x[i])
             value = planck_norm(wavelen, temp)
-            total_before += width*value*emiss_y[i]
+            total_before += width * value * emiss_y[i]
         else:
-            width = abs(wave_x[i+1]-wave_x[i])
+            width = abs(wave_x[i + 1] - wave_x[i])
             value = planck_norm(wavelen, temp)
-            total_after += width*value*emiss_y[i]
-    figure_of_merit_metric = total_before/total_after
-    return(figure_of_merit_metric)
-
-
-        
-
-
+            total_after += width * value * emiss_y[i]
+    figure_of_merit_metric = total_before / total_after
+    return figure_of_merit_metric
 
 
 def step_at_n(n: float = 3.5, max: float = 12):
     """Returns tuple of x and y which corresponds to a function that outputs 0 at index < n, and 1 at index > n.
     n: wavelength to step down at
     max: max wavelength
-    
-    
+
+
     """
-    
-    wavelength = np.array(torch.load("/data/alok/laser/data.pt")["interpolated_wavelength"][0])
+
+    wavelength = np.array(
+        torch.load("/data/alok/laser/data.pt")["interpolated_wavelength"][0]
+    )
     low = 0
     high = 0
     for i, wl in enumerate(wavelength):
@@ -117,5 +116,5 @@ def step_at_n(n: float = 3.5, max: float = 12):
             high = i
 
     x = wavelength[low:high]
-    y = [1 for i in range(low)] + [0 for i in range(high-low)]
+    y = [1 for i in range(low)] + [0 for i in range(high - low)]
     return (x, y)

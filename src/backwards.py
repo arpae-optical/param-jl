@@ -147,7 +147,10 @@ class BackwardModel(pl.LightningModule):
 
         if self.current_epoch == self.config["backward_num_epochs"] - 5:
             nngraph.save_integral_emiss_point(
-                y_pred, y, "/data-new/alok/laser/backwards_val_points.txt", all_points=True
+                y_pred,
+                y,
+                "/data-new/alok/laser/backwards_val_points.txt",
+                all_points=True,
             )
         self.log(f"backward/val/loss", loss, prog_bar=True)
 
