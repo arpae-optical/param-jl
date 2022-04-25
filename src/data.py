@@ -335,7 +335,7 @@ def parse_all() -> None:
         # wavelens = all_wavelens.values
         # emisses = emisses.values
 
-        interp_wavelen = np.linspace(min(wavelens), max(wavelens), num=10_000)
+        interp_wavelen = np.linspace(min(wavelens), max(wavelens), num=800)
         interp_emiss = interp1d(wavelens, emisses)(interp_wavelen)
 
         return {
