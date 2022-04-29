@@ -1,33 +1,31 @@
 from __future__ import annotations
 
 import argparse
-from cProfile import label
 import os
+import random
 import sys
+from cProfile import label
 from pathlib import Path
 from typing import List, Optional, TypedDict
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pytorch_lightning as pl
 import torch
 from einops import rearrange, reduce, repeat
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from ray import tune
+from sklearn.metrics import mean_squared_error
 from torch import Tensor
 
+import utils
 import wandb
 from backwards import BackwardModel
 from data import BackwardDataModule, ForwardDataModule, StepTestDataModule
 from forwards import ForwardModel
 from nngraph import graph
 from utils import Config
-
-import utils
-
-import random
-import numpy as np
-from sklearn.metrics import mean_squared_error
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -194,58 +192,61 @@ def main(config: Config) -> None:
         log_every_n_steps=min(3, config["backward_num_epochs"] - 1),
     )
 
-    forward_data_module = ForwardDataModule(config)
-    backward_data_module = BackwardDataModule(config)
-    step_test_datamodule = StepTestDataModule(config)
+    backward_datamodule = BackwardDataModule(config)
 
     # TODO: load checkpoint for both forward and back
     forward_model = ForwardModel(config)
     backward_model = BackwardModel(config=config, forward_model=forward_model)
 
-    pred_iters = config["prediction_iters"]
-    latent = config["latent_space_size"]
-    variance = config["kl_variance_coeff"]
 
     out = backward_trainer.predict(
         model=backward_model,
         ckpt_path="/data/alok/laser/weights/backward/last.ckpt",
-        datamodule=step_test_datamodule,
+        datamodule=backward_datamodule,
         return_predictions=True,
     )[0]
-    train_emiss = torch.load("/data/alok/laser/data.pt")["interpolated_emissivity"]
 
+    breakpoint()
     true_emiss = out["true_emiss"]
     pred_array = []
 
-    #Variant num is the number of random curves to generate with jitter
+    print(out["uids"])
+
+    # Variant num is the number of random curves to generate with jitter
     variant_num = 1
-    #Arbitrary list is the indices you want to look at in a tensor of emissivity curves. In the FoMM case, 0 = cutoff at 2.5 wl, 800 = cutoff at 12.5 wl. 
+    # Arbitrary list is the indices you want to look at in a tensor of emissivity curves. In the FoMM case, 0 = cutoff at 2.5 wl, 800 = cutoff at 12.5 wl.
     arbitrary_list = [220]
-    watt_list = [[] for i in range(variant_num)]
-    speed_list = [[] for i in range(variant_num)]
-    spacing_list = [[] for i in range(variant_num)]
-    random_emissivities_list = [[] for i in range(variant_num)]
-    param_std_total = 0
-    print("start")
     for i in range(variant_num):
-        #new_true = [torch.tensor(emiss+random.uniform(-0.05, 0.05)) for emiss in true_emiss]
-        #jitter isn't doing anything XXX
+        # new_true = [torch.tensor(emiss+random.uniform(-0.05, 0.05)) for emiss in true_emiss]
+        # jitter isn't doing anything XXX
         random_mult = random.uniform(-0.3, 0.3)
-        new_true = torch.clamp(torch.tensor([[(random_mult*(1/emiss)*(e_index/3+100)/600)*emiss+emiss for e_index, emiss in enumerate(sub_emiss)] for sub_emiss in true_emiss]),0,1)
-        
+        new_true = torch.clamp(
+            torch.tensor(
+                [
+                    [
+                        (random_mult * (1 / emiss) * (e_index / 3 + 100) / 600) * emiss
+                        + emiss
+                        for e_index, emiss in enumerate(sub_emiss)
+                    ]
+                    for sub_emiss in true_emiss
+                ]
+            ),
+            0,
+            1,
+        )
+
         if i == 0:
             new_true = true_emiss
         back = backward_model(new_true)
-        #add spacing
-        
-        #minspeed = 10, maxspeed = 700
+        # add spacing
 
-        #min 1 max 42
+        # minspeed = 10, maxspeed = 700
+
+        # min 1 max 42
 
         new_pred = forward_model(back)
-        
+
         pred_array.append(new_pred.detach())
-    
 
     for i in arbitrary_list:
 
@@ -258,8 +259,6 @@ def main(config: Config) -> None:
         plt.close(fig)
 
 
-
-
 def plot_val(pred_emiss, true_emiss, index):
     wavelen = torch.load("/data/alok/laser/data.pt")["interpolated_wavelength"][0]
     pred_emiss = pred_emiss[0]
@@ -268,42 +267,55 @@ def plot_val(pred_emiss, true_emiss, index):
 
     granularity = 192
 
-    extension = torch.tensor([extended_min+(i)/granularity*(extended_max-extended_min) for i in range(granularity)])
+    extension = torch.tensor(
+        [
+            extended_min + (i) / granularity * (extended_max - extended_min)
+            for i in range(granularity)
+        ]
+    )
 
     extended_wave = torch.cat((extension, wavelen))
 
-    #extend the pred emiss
+    # extend the pred emiss
     old_emiss = pred_emiss
-    breakpoint()
     first_emiss = np.float(old_emiss[0])
-    new_emiss = torch.cat((torch.tensor([first_emiss for i in range(granularity)]), old_emiss))
+    new_emiss = torch.cat(
+        (torch.tensor([first_emiss for _ in range(granularity)]), old_emiss)
+    )
     pred_emiss = new_emiss
 
-    #extend the true emiss
+    # extend the true emiss
     old_emiss = true_emiss
     first_emiss = np.float(old_emiss[0])
-    new_emiss = torch.cat((torch.tensor([first_emiss for i in range(granularity)]), old_emiss))
+    new_emiss = torch.cat(
+        (torch.tensor([first_emiss for _ in range(granularity)]), old_emiss)
+    )
     true_emiss = new_emiss
 
     wavelen = extended_wave
 
-    fig, ax = plt.subplots() 
-    temp = 1400 
-    plot_index = 0
+    fig, ax = plt.subplots()
+    temp = 1400
     planck = [float(utils.planck_norm(wavelength, temp)) for wavelength in wavelen]
 
     planck_max = max(planck)
-    planck = [wave/planck_max for wave in planck]
+    planck = [wave / planck_max for wave in planck]
 
-    new_score = 0
-    
-    wavelen_cutoff = float(wavelen[index+granularity])
-    #format the predicted params
+
+    wavelen_cutoff = float(wavelen[index + granularity])
+    # format the predicted params
     FoMM = utils.planck_emiss_prod(wavelen, pred_emiss, wavelen_cutoff, 1400)
-    
+
     step = true_emiss
-    ax.plot(wavelen, pred_emiss, c= 'blue', alpha = 0.2, linewidth = 1.0, label = f'Predicted Emissivity, FoMM = {FoMM}')
-    ax.plot(wavelen, step, c= 'black', label = f'Ideal target emissivity', linewidth = 2.0)
+    ax.plot(
+        wavelen,
+        pred_emiss,
+        c="blue",
+        alpha=0.2,
+        linewidth=1.0,
+        label=f"Predicted Emissivity, FoMM = {FoMM}",
+    )
+    ax.plot(wavelen, step, c="black", label=f"Ideal target emissivity", linewidth=2.0)
     ax.legend()
     return fig
 
