@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import List, Optional, TypedDict
 
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 import numpy as np
 import pytorch_lightning as pl
 import torch
@@ -25,6 +26,8 @@ from backwards import BackwardModel
 from data import BackwardDataModule, ForwardDataModule, StepTestDataModule
 from forwards import ForwardModel
 from nngraph import graph
+from nngraph import training_set_mean_vs_stdev
+from scipy.interpolate import interp1d
 from utils import Config
 
 parser = argparse.ArgumentParser()
@@ -130,20 +133,20 @@ def main(config: Config) -> None:
         logger=[
             WandbLogger(
                 name="Forward laser params",
-                save_dir="/data/alok/laser/wandb_logs/forward",
+                save_dir="/data-new/alok/laser/wandb_logs/forward",
                 offline=False,
                 project="Laser Forward",
                 log_model=True,
             ),
             TensorBoardLogger(
-                save_dir="/data/alok/laser/test_tube_logs/forward",
+                save_dir="/data-new/alok/laser/test_tube_logs/forward",
                 name="Forward",
             ),
         ],
         callbacks=[
             ModelCheckpoint(
                 monitor="forward/val/loss",
-                dirpath="/data/alok/laser/weights/forward",
+                dirpath="/data-new/alok/laser/weights/forward",
                 save_top_k=1,
                 mode="min",
                 save_last=True,
@@ -165,19 +168,19 @@ def main(config: Config) -> None:
         logger=[
             WandbLogger(
                 name="Backward laser params",
-                save_dir="/data/alok/laser/wandb_logs/backward",
+                save_dir="/data-new/alok/laser/wandb_logs/backward",
                 offline=False,
                 project="Laser Backward",
                 log_model=True,
             ),
             TensorBoardLogger(
-                save_dir="/data/alok/laser/test_tube_logs/backward", name="Backward"
+                save_dir="/data-new/alok/laser/test_tube_logs/backward", name="Backward"
             ),
         ],
         callbacks=[
             ModelCheckpoint(
                 monitor="backward/val/loss",
-                dirpath="/data/alok/laser/weights/backward",
+                dirpath="/data-new/alok/laser/weights/backward",
                 save_top_k=1,
                 mode="min",
                 save_last=True,
@@ -201,123 +204,84 @@ def main(config: Config) -> None:
 
     out = backward_trainer.predict(
         model=backward_model,
-        ckpt_path="/data/alok/laser/weights/backward/last.ckpt",
+        ckpt_path="/data-new/alok/laser/weights/backward/laser-april-18.ckpt",
         datamodule=backward_datamodule,
         return_predictions=True,
     )[0]
-
-    breakpoint()
     true_emiss = out["true_emiss"]
     pred_array = []
-
-    print(out["uids"])
-
-    # Variant num is the number of random curves to generate with jitter
-    variant_num = 1
-    # Arbitrary list is the indices you want to look at in a tensor of emissivity curves. In the FoMM case, 0 = cutoff at 2.5 wl, 800 = cutoff at 12.5 wl.
-    arbitrary_list = [220]
-    for i in range(variant_num):
-        # new_true = [torch.tensor(emiss+random.uniform(-0.05, 0.05)) for emiss in true_emiss]
-        # jitter isn't doing anything XXX
-        random_mult = random.uniform(-0.3, 0.3)
-        new_true = torch.clamp(
-            torch.tensor(
-                [
-                    [
-                        (random_mult * (1 / emiss) * (e_index / 3 + 100) / 600) * emiss
-                        + emiss
-                        for e_index, emiss in enumerate(sub_emiss)
-                    ]
-                    for sub_emiss in true_emiss
-                ]
-            ),
-            0,
-            1,
-        )
-
-        if i == 0:
-            new_true = true_emiss
-        back = backward_model(new_true)
-        # add spacing
-
-        # minspeed = 10, maxspeed = 700
-
-        # min 1 max 42
-
-        new_pred = forward_model(back)
-
-        pred_array.append(new_pred.detach())
-
-    for i in arbitrary_list:
-
-        pred_emiss = []
-        for j in range(variant_num):
-            pred_emiss.append(pred_array[j][i])
-        pred_emiss = torch.stack(pred_emiss)
-        fig = plot_val(pred_emiss, true_emiss[i], i)
-        fig.savefig(f"/data/alok/laser/figs/{i}_predicted.png", dpi=300)
-        plt.close(fig)
+    breakpoint()
+    param_csv = open("/home/collin/param-jl/src/resampled_big.csv", "r")
+    uid_list = [line[0:5] for line in param_csv]
+    watt_list = [line[7] for line in param_csv]
+    speed_list = [line[9:18] for line in param_csv]
+    spacing_list = [line[19:27] for line in param_csv]
+    param_csv.close()
+    RMSE_list = []
+    original_data = torch.load("/data-new/alok/laser/data.pt")
+    y, stdevs = training_set_mean_vs_stdev()
+    for uid in range(29100, 32250):
+        try:
+            real_index = int((out["uids"] == int(uid)+0).nonzero()[0])
+            manufactured_txt = open(f"src/minok_real_by_UID/UID_{uid} .txt")
+            man_x = [float(line[3:16]) for line in manufactured_txt]
+            manufactured_txt.close()
+            manufactured_txt = open(f"src/minok_real_by_UID/UID_{uid} .txt")
+            man_y = [float(line[17:]) for line in manufactured_txt]
+            uids = original_data["uids"]
+            norm_laser = original_data["normalized_laser_params"]
+            f = interp1d(man_x, man_y)
+            
+            pred_emiss = out["pred_emiss"][real_index]
+            fig, RMSE = plot_val(y, true_emiss[real_index], f)
+            fig.savefig(f"/data-new/alok/laser/figs/UID_verify_{uid}_predicted.png", dpi=300)
+            RMSE_list.append(RMSE)
+            plt.close(fig)
+            manufactured_txt.close()
+        except:
+            None
+    print(RMSE_list)
+    print(np.mean(RMSE_list))
+    print(np.std(RMSE_list))
+            
 
 
-def plot_val(pred_emiss, true_emiss, index):
-    wavelen = torch.load("/data/alok/laser/data.pt")["interpolated_wavelength"][0]
-    pred_emiss = pred_emiss[0]
-    extended_max = 2.5
-    extended_min = 0.1
-
-    granularity = 192
-
-    extension = torch.tensor(
-        [
-            extended_min + (i) / granularity * (extended_max - extended_min)
-            for i in range(granularity)
-        ]
-    )
-
-    extended_wave = torch.cat((extension, wavelen))
-
-    # extend the pred emiss
-    old_emiss = pred_emiss
-    first_emiss = np.float(old_emiss[0])
-    new_emiss = torch.cat(
-        (torch.tensor([first_emiss for _ in range(granularity)]), old_emiss)
-    )
-    pred_emiss = new_emiss
-
-    # extend the true emiss
-    old_emiss = true_emiss
-    first_emiss = np.float(old_emiss[0])
-    new_emiss = torch.cat(
-        (torch.tensor([first_emiss for _ in range(granularity)]), old_emiss)
-    )
-    true_emiss = new_emiss
-
-    wavelen = extended_wave
-
+def plot_val(pred_emiss, true_emiss, manufactured_f):
+    wavelen = torch.load("/data-new/alok/laser/data.pt")["interpolated_wavelength"][0]
+    
+    
     fig, ax = plt.subplots()
-    temp = 1400
-    planck = [float(utils.planck_norm(wavelength, temp)) for wavelength in wavelen]
-
-    planck_max = max(planck)
-    planck = [wave / planck_max for wave in planck]
-
-
-    wavelen_cutoff = float(wavelen[index + granularity])
-    # format the predicted params
-    FoMM = utils.planck_emiss_prod(wavelen, pred_emiss, wavelen_cutoff, 1400)
-
-    step = true_emiss
     ax.plot(
         wavelen,
         pred_emiss,
         c="blue",
-        alpha=0.2,
+        alpha=0.5,
         linewidth=1.0,
-        label=f"Predicted Emissivity, FoMM = {FoMM}",
+        label=f"Predicted Emissivity",
     )
-    ax.plot(wavelen, step, c="black", label=f"Ideal target emissivity", linewidth=2.0)
+
+    ax.plot(
+        wavelen,
+        [manufactured_f(emiss) for emiss in wavelen],
+        c="green",
+        alpha=0.5,
+        linewidth=1.0,
+        label=f"Manufactured Emissivity",
+    )
+
+    ax.plot(
+        wavelen,
+        true_emiss,
+        c="red",
+        alpha=0.5,
+        linewidth=1.0,
+        label=f"Original Validation Emissivity",
+    )
+    
+    
+
     ax.legend()
-    return fig
+    return fig, mean_squared_error(pred_emiss,[manufactured_f(emiss) for emiss in wavelen], squared = False)
 
 
 if __name__ == "__main__":
