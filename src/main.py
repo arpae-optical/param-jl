@@ -7,6 +7,7 @@ import sys
 from cProfile import label
 from pathlib import Path
 from typing import List, Optional, TypedDict
+from xml.sax.saxutils import prepare_input_source
 
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
@@ -210,7 +211,6 @@ def main(config: Config) -> None:
     )[0]
     true_emiss = out["true_emiss"]
     pred_array = []
-    breakpoint()
     param_csv = open("/home/collin/param-jl/src/resampled_big.csv", "r")
     uid_list = [line[0:5] for line in param_csv]
     watt_list = [line[7] for line in param_csv]
@@ -220,30 +220,81 @@ def main(config: Config) -> None:
     RMSE_list = []
     original_data = torch.load("/data-new/alok/laser/data.pt")
     y, stdevs = training_set_mean_vs_stdev()
+    laser_array = []
+    uid_list = []
+    uid_i_list = []
+    emiss_array = []
+    man_emiss_array = []
+    manufactured_txt = open(f"src/minok_real_by_UID/UID_{32248} .txt")
+    man_x = [float(line[3:16]) for line in manufactured_txt]
+    manufactured_txt.close()
+
     for uid in range(29100, 32250):
         try:
-            real_index = int((out["uids"] == int(uid)+0).nonzero()[0])
-            manufactured_txt = open(f"src/minok_real_by_UID/UID_{uid} .txt")
-            man_x = [float(line[3:16]) for line in manufactured_txt]
-            manufactured_txt.close()
             manufactured_txt = open(f"src/minok_real_by_UID/UID_{uid} .txt")
             man_y = [float(line[17:]) for line in manufactured_txt]
             uids = original_data["uids"]
-            norm_laser = original_data["normalized_laser_params"]
+            uid_index = int((uids == uid).nonzero(as_tuple = True)[0])
+            norm_laser = original_data["normalized_laser_params"][uid_index]
+            interp_emiss = original_data["interpolated_emissivity"][uid_index]
             f = interp1d(man_x, man_y)
+            man_interp_emiss = [f((i+1)*12/800+2.5) for i in range(800)]
+            man_emiss_array.append(man_interp_emiss)
+            laser_array.append(norm_laser)
             
-            pred_emiss = out["pred_emiss"][real_index]
-            fig, RMSE = plot_val(y, true_emiss[real_index], f)
-            fig.savefig(f"/data-new/alok/laser/figs/UID_verify_{uid}_predicted.png", dpi=300)
-            RMSE_list.append(RMSE)
-            plt.close(fig)
+            emiss_array.append(interp_emiss)
+            uid_list.append(uid)
+            uid_i_list.append(uid_index)
             manufactured_txt.close()
         except:
             None
-    print(RMSE_list)
-    print(np.mean(RMSE_list))
-    print(np.std(RMSE_list))
-            
+    
+    laser_array = torch.stack(laser_array)
+    emiss_array = torch.stack(emiss_array)
+    print(laser_array.size())
+    target = torch.zeros(512, 800)
+    target[:100, :] = emiss_array
+    pred_param = backward_model(target)
+    pred_emiss = forward_model(pred_param)
+
+    graph(True, True, laser_array, emiss_array, pred_param, man_emiss_array, pred_param, pred_emiss)
+
+    end_file = open(f"src/orig_data.csv", "w")
+    end_file.write(f"UID, Speed, Spacing, Wattage 0.2, Wattage 0.3, Wattage 0.4, Wattage 0.5, Wattage 0.6, Wattage 0.7, Wattage 0.8, Wattage 0.9, Wattage 1.0, Wattage 1.1, Wattage 1.2, Wattage 1.3, Predicted Emissivity (800 indices)")
+    end_file.write(f"\n")
+    for i in range(100):
+        end_file.write(f"{uid_list[i]}, ")
+        for j in range(14):
+            end_file.write(f"{laser_array[i][j]}, ")
+        for k in range(800):
+            end_file.write(f"{emiss_array[i][k]}, ")
+        end_file.write(f"\n")
+    end_file.close()
+
+    end_file = open(f"src/pred_data.csv", "w")
+    end_file.write(f"UID, Speed, Spacing, Wattage 0.2, Wattage 0.3, Wattage 0.4, Wattage 0.5, Wattage 0.6, Wattage 0.7, Wattage 0.8, Wattage 0.9, Wattage 1.0, Wattage 1.1, Wattage 1.2, Wattage 1.3, Predicted Emissivity (800 indices)")
+    end_file.write(f"\n")
+    for i in range(100):
+        end_file.write(f"{uid_list[i]}, ")
+        for j in range(14):
+            end_file.write(f"{pred_param[i][j]}, ")
+        for k in range(800):
+            end_file.write(f"{pred_emiss[i][k]}, ")
+        end_file.write(f"\n")
+    end_file.close()
+
+    end_file = open(f"src/man_data.csv", "w")
+    end_file.write(f"UID, Speed, Spacing, Wattage 0.2, Wattage 0.3, Wattage 0.4, Wattage 0.5, Wattage 0.6, Wattage 0.7, Wattage 0.8, Wattage 0.9, Wattage 1.0, Wattage 1.1, Wattage 1.2, Wattage 1.3, Predicted Emissivity (800 indices)")
+    end_file.write(f"\n")
+    for i in range(100):
+        end_file.write(f"{uid_list[i]}, ")
+        for j in range(14):
+            end_file.write(f"{pred_param[i][j]}, ")
+        for k in range(800):
+            end_file.write(f"{man_emiss_array[i][k]}, ")
+        end_file.write(f"\n")
+    end_file.close()
+
 
 
 def plot_val(pred_emiss, true_emiss, manufactured_f):
